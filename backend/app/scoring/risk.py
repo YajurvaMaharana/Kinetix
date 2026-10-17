@@ -51,6 +51,8 @@ class ScoringContext:
     device_risk: float = 0.0
     travel_risk: float = 0.0
     previous_risk_score: Optional[float] = None
+    location_pings: Optional[List[Any]] = None
+    previous_location: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -75,6 +77,8 @@ class ScoredAssessment:
     latency_ms: float
     model_version: str = "tj-hybrid-0.2"
     policy_version: str = "v2.4.0"
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
 
 
 # Alias for backward compatibility
@@ -103,9 +107,11 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     # 3. Sensitive Account Actions
     sens = sensitive_actions(ctx, cfg)
 
-    # 4. Device and Travel Inputs (Interface stubs to 0.0 unless provided)
+    # 4. Device and Travel Inputs
     device_risk = extract_device_risk(ctx)
-    travel_risk = extract_travel_risk(ctx)
+    from app.scoring.travel import evaluate_travel
+    travel_eval = evaluate_travel(ctx, cfg)
+    travel_risk = max(float(getattr(ctx, "travel_risk", 0.0) or 0.0), travel_eval.travel_risk)
     graph_risk = extract_graph_risk(ctx)
 
     # Flags for vector construction
@@ -127,7 +133,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     anomaly_score = score_anomaly(anom_vec)
 
     # 6. Deterministic Security Rules
-    rule_res = evaluate_rules(ctx, cfg)
+    rule_res = evaluate_rules(ctx, cfg, travel_eval=travel_eval)
 
     # 7. Mitigations (only apply when not an active security rule violation or severe account takeover)
     trust_health_val = extract_trust_health(ctx)
@@ -148,7 +154,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     else:
         continuity = behavior_continuity(behavior_dev, cfg.behavior_continuity_threshold)
         known_zone = known_zone_share(zone_id, ctx.baseline)
-        trusted_dev = trusted_device_signal(ctx.device_passport, dev_res.is_new_device)
+        trusted_dev = trusted_device_signal(ctx.device_passport, dev_res.is_new_device, baseline=ctx.baseline)
         health_bonus = trust_health_bonus(trust_health_val)
 
     # 8. Compute Point Components
@@ -289,6 +295,10 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 
     # 13. Threat Tags Compilation
     threat_tags: List[str] = list(rule_res.threat_tags)
+    for tag in travel_eval.threat_tags:
+        if tag not in threat_tags:
+            threat_tags.append(tag)
+
     if classification == "suspected_handoff" and "ACCOUNT_HANDOFF" not in threat_tags:
         threat_tags.append("ACCOUNT_HANDOFF")
     elif classification == "ordinary_change" and "ORDINARY_CHANGE" not in threat_tags:
@@ -314,6 +324,10 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     )
     top_metrics = [k for k, v in sorted_metric_devs if v > 0.25]
 
+    # Detect benign change type & adaptation progress
+    from app.services.baseline_service import baseline_service
+    detected_change_type, detected_progress = baseline_service.detect_change_type(ctx, cfg)
+
     context_details = {
         "behavior_dev": behavior_dev,
         "env_change": env,
@@ -321,6 +335,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         "anomaly_score": anomaly_score,
         "device_risk": device_risk,
         "travel_risk": travel_risk,
+        "travel_factors": travel_eval.factors,
         "graph_risk": graph_risk,
         "continuity": continuity,
         "known_zone_share": known_zone,
@@ -332,6 +347,8 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         "zone_id": str(zone_id or ""),
         "top_deviated_metrics": top_metrics,
         "recommended_action": recommended_action,
+        "change_type": detected_change_type,
+        "adaptation_progress": detected_progress,
     }
 
     explanation_res = generate_explanation(
@@ -391,6 +408,8 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         latency_ms=latency_ms,
         model_version="tj-hybrid-0.2",
         policy_version=cfg.version,
+        change_type=detected_change_type,
+        adaptation_progress=detected_progress,
     )
 
 
@@ -415,27 +434,13 @@ def extract_device_risk(ctx: ScoringContext) -> float:
 
 def extract_travel_risk(ctx: ScoringContext) -> float:
     """
-    Interface for Prompt 8 Travel Analysis integration.
-    Stubs to 0.0 unless provided explicitly in context or telemetry.
+    Evaluates kinematic travel risk using travel analysis engine.
     """
     if hasattr(ctx, "travel_risk") and ctx.travel_risk is not None and ctx.travel_risk > 0.0:
         return float(ctx.travel_risk)
-    req = _extract_dict(ctx.request_or_event)
-    telem = _extract_dict(req.get("telemetry", {})) or req
-    try:
-        speed = float(telem.get("speed_between_pings_kmh", 0.0) or 0.0)
-    except (ValueError, TypeError):
-        speed = 0.0
-    is_imp = bool(
-        telem.get("impossible_travel_detected")
-        or req.get("impossible_travel") in (1, "1", True)
-        or "IMPOSSIBLE_TRAVEL" in str(req.get("threat_tags", ""))
-    )
-    if speed > 800.0 or is_imp:
-        return 1.0
-    if telem.get("mock_location_detected") in (1, "1", True) or "GPS_SPOOFING" in str(req.get("threat_tags", "")):
-        return 0.80
-    return 0.0
+    from app.scoring.travel import evaluate_travel
+    travel_eval = evaluate_travel(ctx)
+    return travel_eval.travel_risk
 
 
 def extract_graph_risk(ctx: ScoringContext) -> float:

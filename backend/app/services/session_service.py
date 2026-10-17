@@ -33,6 +33,7 @@ from app.models.entities import (
     PayoutRequest,
     PolicyConfig,
     Rider,
+    RiderBaseline,
     RiskAssessment,
     RiskFactor,
     SessionEvent,
@@ -427,7 +428,38 @@ class SessionService:
         if history_ctx.get("concurrent_session_detected"):
             merged_req["concurrent_session"] = True
 
-        # Build ScoringContext
+        # Query the last N location pings (from session_events)
+        recent_pings_events = (
+            db.query(SessionEvent)
+            .filter(SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping")
+            .order_by(SessionEvent.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        location_pings = []
+        for pe in reversed(recent_pings_events):
+            try:
+                p_data = json.loads(pe.payload_json)
+                if isinstance(p_data, dict):
+                    if "created_at" not in p_data and "timestamp" not in p_data:
+                        p_data["created_at"] = pe.created_at.isoformat()
+                    location_pings.append(p_data)
+            except Exception:
+                pass
+
+        loc = payload_data.get("location")
+        if loc:
+            location_pings.append(loc.model_dump() if hasattr(loc, "model_dump") else loc)
+
+        previous_location = history_ctx.get("last_location")
+
+        # Check if rider has open case
+        has_open_case = (
+            db.query(Case)
+            .filter(Case.rider_id == rider.id, Case.status.in_(["OPEN", "IN_REVIEW"]))
+            .count()
+            > 0
+        )
         ctx = ScoringContext(
             request_or_event=merged_req,
             baseline=baseline,
@@ -438,6 +470,8 @@ class SessionService:
             active_policy=active_policy,
             travel_risk=1.0 if history_ctx.get("impossible_travel_detected") else 0.0,
             previous_risk_score=history_ctx.get("previous_risk_score"),
+            location_pings=location_pings if location_pings else None,
+            previous_location=previous_location,
         )
 
         # 4. Pure Multi-Modal Scoring
@@ -446,6 +480,26 @@ class SessionService:
         # Measure end-to-end latency in milliseconds (guarantee > 0.0)
         elapsed_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
         final_latency_ms = max(0.1, elapsed_ms)
+
+        # Process gradual baseline adaptation
+        from app.services.baseline_service import baseline_service
+        session_info = dict(merged_req)
+        session_info["session_id"] = session.id
+        session_info["device_id"] = device.id
+        session_info["device_token"] = raw_fingerprint if is_new_session else getattr(device, "fingerprint", None)
+
+        adaptation_res = baseline_service.process_session_adaptation(
+            baseline=baseline,
+            session_info=session_info,
+            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0 if scored.components.get("pts_behavior") else 0.15,
+            rule_matches=[f for f in scored.factors if f.category.lower() == "rule"],
+            rule_floor=75.0 if scored.classification == "suspected_handoff" else 0.0,
+            graph_risk=scored.components.get("pts_graph_risk", 0.0) / 12.0,
+            has_open_case=has_open_case,
+            timestamp=session.created_at,
+        )
+        if "new_phone" in adaptation_res.adapted_components:
+            device.trust_rating = 1.0
 
         # 5. Persist RiskAssessment and RiskFactors
         assessment_id = f"eval_{uuid.uuid4().hex[:8]}"
@@ -644,6 +698,8 @@ class SessionService:
             case_id=case_id,
             latency_ms=final_latency_ms,
             evaluated_at=assessment.created_at.isoformat(),
+            change_type=adaptation_res.change_type or scored.change_type,
+            adaptation_progress=adaptation_res.adaptation_progress or scored.adaptation_progress,
         )
 
         return session, res_schema
@@ -669,6 +725,42 @@ class SessionService:
             db=db, session_or_event=event_dict, session_id=session_id, actor=actor, role=role
         )
         return assessment
+
+    @classmethod
+    def get_investigation_payload(cls, db: Session, session_id: str) -> Dict[str, Any]:
+        """
+        Builds complete investigation payload for analyst review.
+        Includes change_type and adaptation_progress.
+        """
+        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if not session:
+            raise KeyError(f"Session '{session_id}' not found")
+
+        assessment = (
+            db.query(RiskAssessment)
+            .filter(RiskAssessment.session_id == session.id)
+            .order_by(RiskAssessment.created_at.desc())
+            .first()
+        )
+        baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+
+        from app.services.baseline_service import baseline_service
+        change_type, progress = baseline_service.detect_change_type(
+            {"session_id": session.id, "rider_id": session.rider_id, "device_id": session.device_id},
+            cfg=None,
+        )
+
+        factors = assessment.factors if assessment else []
+        return baseline_service.assemble_investigation_payload(
+            session_id=session.id,
+            rider_id=session.rider_id,
+            verdict=session.current_verdict,
+            risk_score=session.current_risk_score,
+            threat_tags=[],
+            factors=factors,
+            mitigating_factors=[],
+            baseline=baseline,
+        )
 
 
 session_service = SessionService()

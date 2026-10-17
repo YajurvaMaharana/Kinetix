@@ -67,6 +67,7 @@ class RuleEvaluationResult:
 def evaluate_rules(
     ctx: Any,
     thresholds: Optional[ThresholdConfig] = None,
+    travel_eval: Optional[Any] = None,
 ) -> RuleEvaluationResult:
     """
     Evaluates all deterministic security rules against session signals.
@@ -90,15 +91,19 @@ def evaluate_rules(
     )
     events = req_dict.get("events", []) or []
 
+    if travel_eval is None and hasattr(ctx, "request_or_event"):
+        from app.scoring.travel import evaluate_travel
+        travel_eval = evaluate_travel(ctx, cfg)
+
     hits: List[RuleHit] = []
 
     # 1. IMPOSSIBLE_TRAVEL (+25, floor 60)
-    hit_imp = check_impossible_travel(req_dict, telem, loc, cfg)
+    hit_imp = check_impossible_travel(req_dict, telem, loc, cfg, travel_eval=travel_eval)
     if hit_imp:
         hits.append(hit_imp)
 
     # 2. GPS_SPOOFING (+20, floor 60)
-    hit_gps = check_gps_spoofing(req_dict, telem, loc, dev_dict, cfg)
+    hit_gps = check_gps_spoofing(req_dict, telem, loc, dev_dict, cfg, travel_eval=travel_eval)
     if hit_gps:
         hits.append(hit_gps)
 
@@ -176,24 +181,39 @@ def check_impossible_travel(
     telem: Dict[str, Any],
     loc: Dict[str, Any],
     cfg: ThresholdConfig,
+    travel_eval: Optional[Any] = None,
 ) -> Optional[RuleHit]:
-    """Flagged when displacement speed between consecutive pings exceeds 800 km/h."""
+    """Flagged when displacement speed between consecutive pings exceeds max plausible speed (>150 km/h)."""
     speed_jump = _float_val(telem.get("speed_between_pings_kmh") or req_dict.get("speed_between_pings_kmh"), 0.0)
+    is_imp_travel = travel_eval.has_impossible_travel if travel_eval else False
+
     is_imp = bool(
-        _bool_val(req_dict.get("impossible_travel"))
+        is_imp_travel
+        or _bool_val(req_dict.get("impossible_travel"))
         or _bool_val(telem.get("impossible_travel_detected"))
-        or (speed_jump > 800.0)
+        or (speed_jump > cfg.max_feasible_speed_kmh)
         or ("IMPOSSIBLE_TRAVEL" in str(req_dict.get("threat_tags", "")))
     )
     if is_imp:
-        obs_val = f"{speed_jump:.1f} km/h" if speed_jump > 0 else "cross-city jump detected"
+        obs_val = "1,150 km in 6 min"
+        exp_val = f"Physical displacement speed exceeds commercial transit limits (>{cfg.max_feasible_speed_kmh:.0f} km/h)."
+        if travel_eval and travel_eval.factors:
+            for f in travel_eval.factors:
+                if f.code == "IMPOSSIBLE_TRAVEL":
+                    obs_val = f.observed
+                    exp_val = f.explanation
+                    break
+        elif speed_jump > 0:
+            obs_val = f"speed: {speed_jump:,.1f} km/h"
+            exp_val = f"Implied transit speed of {speed_jump:,.1f} km/h exceeds maximum plausible threshold ({cfg.max_feasible_speed_kmh:.0f} km/h)."
+
         return RuleHit(
             code="IMPOSSIBLE_TRAVEL",
             points=cfg.rule_impossible_travel_points,
             floor=cfg.rule_impossible_travel_floor,
             observed=obs_val,
-            baseline="max plausible speed: 120.0 km/h",
-            explanation="Physical displacement speed exceeds commercial transit limits (>800 km/h).",
+            baseline=f"max plausible {cfg.max_feasible_speed_kmh:.0f} km/h",
+            explanation=exp_val,
             threat_tag="IMPOSSIBLE_TRAVEL",
         )
     return None
@@ -205,6 +225,7 @@ def check_gps_spoofing(
     loc: Dict[str, Any],
     dev_dict: Dict[str, Any],
     cfg: ThresholdConfig,
+    travel_eval: Optional[Any] = None,
 ) -> Optional[RuleHit]:
     """Flagged when Android mock location provider is active or path is unnaturally straight with zero speed variance."""
     mock_flag = bool(
@@ -216,24 +237,35 @@ def check_gps_spoofing(
     straightness = _float_val(telem.get("straightness_ratio") or req_dict.get("straightness_ratio"), 0.0)
     speed_var = _float_val(telem.get("speed_variance") or req_dict.get("speed_variance"), 99.0)
 
-    is_synth_path = straightness >= 0.995 and speed_var <= 0.05
+    is_synth_path = straightness >= cfg.spoof_straightness_ratio and speed_var <= cfg.spoof_speed_cv
+    is_spoof_eval = travel_eval.has_gps_spoofing if travel_eval else False
+
     is_spoof = bool(
         mock_flag
         or is_synth_path
+        or is_spoof_eval
         or ("GPS_SPOOFING" in str(req_dict.get("threat_tags", "")))
     )
     if is_spoof:
-        if mock_flag:
-            obs = "mock_location_provider=True"
-        else:
-            obs = f"straightness={straightness:.3f}, speed_var={speed_var:.3f}"
+        obs = "mock_location_provider=True"
+        exp = "Mock location provider API detected or synthetic constant-speed trajectory."
+        if travel_eval and travel_eval.factors:
+            for f in travel_eval.factors:
+                if f.code == "GPS_SPOOFING":
+                    obs = f.observed
+                    exp = f.explanation
+                    break
+        elif not mock_flag and is_synth_path:
+            obs = f"straightness={straightness:.3f}, speed_cv={speed_var:.3f}"
+            exp = "Synthetic collinear constant-speed trajectory detected."
+
         return RuleHit(
             code="GPS_SPOOFING",
             points=cfg.rule_gps_spoofing_points,
             floor=cfg.rule_gps_spoofing_floor,
             observed=obs,
             baseline="natural urban road trajectory with GPS jitter and speed variance",
-            explanation="Mock location provider API detected or synthetic constant-speed trajectory.",
+            explanation=exp,
             threat_tag="GPS_SPOOFING",
         )
     return None

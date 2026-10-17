@@ -40,6 +40,24 @@ class AssessmentSchema(BaseModel):
     case_id: Optional[str] = None
     latency_ms: float = 0.0
     evaluated_at: str
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
+
+
+class InvestigationPayload(BaseModel):
+    session_id: str
+    rider_id: str
+    verdict: str
+    risk_score: float
+    threat_tags: List[str] = Field(default_factory=list)
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
+    adaptation_state: Optional[Dict[str, Any]] = None
+    is_blocked: bool = False
+    block_reason: Optional[str] = None
+    factors: List[FactorSchema] = Field(default_factory=list)
+    mitigating_factors: List[FactorSchema] = Field(default_factory=list)
+    generated_at: str
 
 
 # ------------------------------------------------------------------------------
@@ -198,6 +216,8 @@ class CaseResponse(BaseModel):
     assigned_to: Optional[str] = None
     threat_summary: Optional[str] = None
     notes: Optional[str] = None
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
     created_at: str
     updated_at: str
 
