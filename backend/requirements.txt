@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=2
+pydantic>=2
+scikit-learn
+numpy
+pandas
+joblib
+networkx
+cryptography
+python-dateutil

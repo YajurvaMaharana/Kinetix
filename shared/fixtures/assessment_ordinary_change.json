@@ -1,0 +1,53 @@
+{
+  "assessment_id": "eval_ord_chg_9002",
+  "session_id": "sess_ord_chg_9002",
+  "rider_id": "rider_us_midwest_1889",
+  "trust_score": 78.5,
+  "verdict": "ALLOW",
+  "risk_tier": "LOW",
+  "threat_tags": [
+    "ORDINARY_CHANGE"
+  ],
+  "factors": [
+    {
+      "name": "New Hardware Model",
+      "category": "DEVICE",
+      "impact": "NEUTRAL",
+      "weight": 0.25,
+      "score": 0.70,
+      "description": "First time observing Samsung Galaxy S24 Ultra for this rider; hardware attestation genuine."
+    },
+    {
+      "name": "Biometric Authenticity",
+      "category": "BIOMETRIC",
+      "impact": "POSITIVE",
+      "weight": 0.35,
+      "score": 0.93,
+      "description": "Strong facial liveness and feature vector consistency with enrolled baseline."
+    },
+    {
+      "name": "Location Shift",
+      "category": "LOCATION",
+      "impact": "NEUTRAL",
+      "weight": 0.20,
+      "score": 0.75,
+      "description": "Transit origin Chicago Loop is 280 miles from primary baseline, but speed of transit is consistent with domestic flight arrival."
+    },
+    {
+      "name": "Kinematic Regularity",
+      "category": "TELEMETRY",
+      "impact": "POSITIVE",
+      "weight": 0.20,
+      "score": 0.89,
+      "description": "Normal driving dynamics and expected cadence."
+    }
+  ],
+  "challenge": null,
+  "case_id": null,
+  "payout_decision": {
+    "status": "APPROVED",
+    "hold_reason": null,
+    "hold_period_hours": 0
+  },
+  "evaluated_at": "2026-10-17T18:45:02Z"
+}

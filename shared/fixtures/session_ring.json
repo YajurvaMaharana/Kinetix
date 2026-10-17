@@ -1,0 +1,48 @@
+{
+  "session_id": "sess_ring_9005",
+  "rider_id": "rider_syndicate_node_014",
+  "driver_id": "drv_syndicate_node_014",
+  "timestamp": "2026-10-17T19:30:00Z",
+  "device_passport": {
+    "device_id_hash": "778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566",
+    "device_model": "Xiaomi Redmi 9A",
+    "os_version": "Android 11",
+    "app_version": "2.3.0",
+    "ip_address": "185.220.101.5",
+    "carrier": "Tor Exit Node Network",
+    "vpn_detected": true,
+    "mock_location_detected": false,
+    "rooted_or_jailbroken": true,
+    "screen_resolution": "720x1600",
+    "battery_drain_rate_pct_hr": 1.1
+  },
+  "biometrics": {
+    "face_present": true,
+    "face_match_confidence": 0.12,
+    "liveness_score": 0.08,
+    "biometric_backend": "simulated"
+  },
+  "telemetry": {
+    "speed_kmh": 0.5,
+    "acceleration_variance": 0.01,
+    "gyro_stability": 0.99,
+    "typing_cadence_cpm": 340,
+    "route_deviation_pct": 0.0,
+    "trip_distance_km": 0.2,
+    "elapsed_minutes": 2.0
+  },
+  "location": {
+    "lat": 37.7749,
+    "lng": -122.4194,
+    "accuracy_meters": 3.0,
+    "geofence_id": "sf_tenderloin_node",
+    "zone_risk_level": "CRITICAL"
+  },
+  "financial": {
+    "fare_amount": 95.00,
+    "currency": "USD",
+    "payment_method": "stolen_virtual_debit",
+    "tip_amount": 80.00,
+    "promo_applied": true
+  }
+}

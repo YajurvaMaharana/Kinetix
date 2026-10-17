@@ -1,0 +1,48 @@
+{
+  "session_id": "sess_ord_chg_9002",
+  "rider_id": "rider_us_midwest_1889",
+  "driver_id": "drv_3104",
+  "timestamp": "2026-10-17T18:45:00Z",
+  "device_passport": {
+    "device_id_hash": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0",
+    "device_model": "Samsung Galaxy S24 Ultra",
+    "os_version": "Android 14",
+    "app_version": "2.4.1",
+    "ip_address": "172.56.21.90",
+    "carrier": "Verizon Wireless",
+    "vpn_detected": false,
+    "mock_location_detected": false,
+    "rooted_or_jailbroken": false,
+    "screen_resolution": "1440x3120",
+    "battery_drain_rate_pct_hr": 4.1
+  },
+  "biometrics": {
+    "face_present": true,
+    "face_match_confidence": 0.94,
+    "liveness_score": 0.91,
+    "biometric_backend": "simulated"
+  },
+  "telemetry": {
+    "speed_kmh": 45.2,
+    "acceleration_variance": 0.22,
+    "gyro_stability": 0.88,
+    "typing_cadence_cpm": 210,
+    "route_deviation_pct": 5.4,
+    "trip_distance_km": 12.3,
+    "elapsed_minutes": 22.0
+  },
+  "location": {
+    "lat": 41.8781,
+    "lng": -87.6298,
+    "accuracy_meters": 5.2,
+    "geofence_id": "chicago_loop_corridor",
+    "zone_risk_level": "LOW"
+  },
+  "financial": {
+    "fare_amount": 34.00,
+    "currency": "USD",
+    "payment_method": "google_pay",
+    "tip_amount": 6.00,
+    "promo_applied": false
+  }
+}

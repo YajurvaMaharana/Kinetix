@@ -1,0 +1,117 @@
+# ==========================================
+# TrustJuggler v2 Root .gitignore
+# ==========================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+backend/.venv/
+backend/venv/
+
+# Python test & lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+
+# --- Node / Frontend ---
+node_modules/
+frontend/node_modules/
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Next.js build outputs
+frontend/.next/
+frontend/out/
+.next/
+out/
+build/
+dist/
+
+# Next.js / frontend caches
+.turbo/
+.eslintcache
+*.tsbuildinfo
+next-env.d.ts
+
+# --- SQLite & Databases ---
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+backend/*.db
+backend/*.sqlite3
+
+# --- Artifacts & ML Models ---
+*.joblib
+*.pkl
+*.onnx
+*.pt
+*.pth
+*.h5
+artifacts/
+reports/
+backend/app/ml/artifacts/
+shared/artifacts/
+!shared/fixtures/
+
+# --- Environment Variables ---
+.env
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env.local
+!**/.env.example
+
+# --- IDEs & OS ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

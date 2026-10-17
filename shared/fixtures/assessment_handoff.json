@@ -1,0 +1,60 @@
+{
+  "assessment_id": "eval_handoff_9003",
+  "session_id": "sess_handoff_9003",
+  "rider_id": "rider_us_south_6021",
+  "trust_score": 42.0,
+  "verdict": "CHALLENGE",
+  "risk_tier": "MEDIUM",
+  "threat_tags": [
+    "ACCOUNT_HANDOFF"
+  ],
+  "factors": [
+    {
+      "name": "Biometric Identity Mismatch",
+      "category": "BIOMETRIC",
+      "impact": "NEGATIVE",
+      "weight": 0.40,
+      "score": 0.28,
+      "description": "Active face capture exhibits low cosine similarity (0.38) with enrolled rider profile."
+    },
+    {
+      "name": "Telemetric Dynamics Divergence",
+      "category": "TELEMETRY",
+      "impact": "NEGATIVE",
+      "weight": 0.30,
+      "score": 0.41,
+      "description": "Abrupt change in phone handling, high acceleration jitter, and keystroke cadence crash (85 cpm vs baseline 220 cpm)."
+    },
+    {
+      "name": "Corridor Route Deviation",
+      "category": "LOCATION",
+      "impact": "NEGATIVE",
+      "weight": 0.15,
+      "score": 0.45,
+      "description": "Route deviation exceeded 28% without prior destination update."
+    },
+    {
+      "name": "Device Integrity",
+      "category": "DEVICE",
+      "impact": "POSITIVE",
+      "weight": 0.15,
+      "score": 0.85,
+      "description": "Hardware attestation and OS security checks pass normally."
+    }
+  ],
+  "challenge": {
+    "challenge_id": "chlg_face_9003",
+    "session_id": "sess_handoff_9003",
+    "challenge_type": "FACE_LIVENESS",
+    "status": "PENDING",
+    "expires_at": "2026-10-17T19:05:00Z",
+    "created_at": "2026-10-17T19:00:02Z"
+  },
+  "case_id": null,
+  "payout_decision": {
+    "status": "ESCROW_HOLD",
+    "hold_reason": "Pending successful mid-trip biometric re-verification challenge",
+    "hold_period_hours": 2
+  },
+  "evaluated_at": "2026-10-17T19:00:02Z"
+}

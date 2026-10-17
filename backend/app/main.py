@@ -1,0 +1,53 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+from app.config import settings
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="TrustJuggler v2: Continuous Behavioral Trust, Ring Detection & Fraud Prevention Engine",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# Configure CORS for frontend access (defaulting to Next.js on port 3000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class HealthResponse(BaseModel):
+    status: str
+    model_version: str
+    policy_version: str
+
+
+@app.get("/api/v1/health", response_model=HealthResponse, tags=["Health"])
+@app.get("/health", response_model=HealthResponse, tags=["Health"])
+async def get_health() -> HealthResponse:
+    """
+    Health check endpoint returning service readiness,
+    active ML model version, and behavioral policy version.
+    """
+    return HealthResponse(
+        status="healthy",
+        model_version=settings.MODEL_VERSION,
+        policy_version=settings.POLICY_VERSION,
+    )
+
+
+@app.get("/", tags=["Root"])
+async def root():
+    return {
+        "service": settings.PROJECT_NAME,
+        "docs": "/docs",
+        "health": "/api/v1/health",
+        "model_version": settings.MODEL_VERSION,
+        "policy_version": settings.POLICY_VERSION,
+    }

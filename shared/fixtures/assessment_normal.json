@@ -1,0 +1,53 @@
+{
+  "assessment_id": "eval_norm_9001",
+  "session_id": "sess_norm_9001",
+  "rider_id": "rider_us_east_4102",
+  "trust_score": 96.0,
+  "verdict": "ALLOW",
+  "risk_tier": "LOW",
+  "threat_tags": [
+    "CLEAN"
+  ],
+  "factors": [
+    {
+      "name": "Hardware Attestation",
+      "category": "DEVICE",
+      "impact": "POSITIVE",
+      "weight": 0.25,
+      "score": 0.98,
+      "description": "Device hardware cryptographic passport valid, non-rooted genuine iPhone."
+    },
+    {
+      "name": "Biometric Authenticity",
+      "category": "BIOMETRIC",
+      "impact": "POSITIVE",
+      "weight": 0.30,
+      "score": 0.97,
+      "description": "High-fidelity facial liveness and cosine match with registered baseline."
+    },
+    {
+      "name": "Kinematic Consistency",
+      "category": "TELEMETRY",
+      "impact": "POSITIVE",
+      "weight": 0.25,
+      "score": 0.94,
+      "description": "Smooth acceleration and gyro motion align with urban vehicle travel."
+    },
+    {
+      "name": "Cluster Association",
+      "category": "GRAPH",
+      "impact": "POSITIVE",
+      "weight": 0.20,
+      "score": 0.99,
+      "description": "Zero edges to known fraudulent syndicates or recycled payment tokens."
+    }
+  ],
+  "challenge": null,
+  "case_id": null,
+  "payout_decision": {
+    "status": "APPROVED",
+    "hold_reason": null,
+    "hold_period_hours": 0
+  },
+  "evaluated_at": "2026-10-17T18:30:02Z"
+}

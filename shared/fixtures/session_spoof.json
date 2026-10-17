@@ -1,0 +1,48 @@
+{
+  "session_id": "sess_spoof_9004",
+  "rider_id": "rider_global_susp_7719",
+  "driver_id": "drv_1120",
+  "timestamp": "2026-10-17T19:15:00Z",
+  "device_passport": {
+    "device_id_hash": "ff00112233445566778899aabbccddeeff00112233445566778899aabbccddee",
+    "device_model": "Generic Android SDK built for x86",
+    "os_version": "Android 12",
+    "app_version": "2.1.0",
+    "ip_address": "45.148.10.2",
+    "carrier": "Datacenter Hosting LLC",
+    "vpn_detected": true,
+    "mock_location_detected": true,
+    "rooted_or_jailbroken": true,
+    "screen_resolution": "720x1280",
+    "battery_drain_rate_pct_hr": 0.0
+  },
+  "biometrics": {
+    "face_present": false,
+    "face_match_confidence": 0.0,
+    "liveness_score": 0.05,
+    "biometric_backend": "simulated"
+  },
+  "telemetry": {
+    "speed_kmh": 220.0,
+    "acceleration_variance": 0.0,
+    "gyro_stability": 1.0,
+    "typing_cadence_cpm": 0,
+    "route_deviation_pct": 74.0,
+    "trip_distance_km": 42.0,
+    "elapsed_minutes": 5.0
+  },
+  "location": {
+    "lat": 34.0522,
+    "lng": -118.2437,
+    "accuracy_meters": 1.0,
+    "geofence_id": "la_downtown_restricted",
+    "zone_risk_level": "HIGH"
+  },
+  "financial": {
+    "fare_amount": 140.00,
+    "currency": "USD",
+    "payment_method": "prepaid_gift_card",
+    "tip_amount": 50.00,
+    "promo_applied": true
+  }
+}

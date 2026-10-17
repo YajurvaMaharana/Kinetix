@@ -1,0 +1,55 @@
+{
+  "assessment_id": "eval_ring_9005",
+  "session_id": "sess_ring_9005",
+  "rider_id": "rider_syndicate_node_014",
+  "trust_score": 8.0,
+  "verdict": "BLOCK",
+  "risk_tier": "CRITICAL",
+  "threat_tags": [
+    "COLLUSION_RING",
+    "DEVICE_FARM",
+    "PAYOUT_RISK"
+  ],
+  "factors": [
+    {
+      "name": "Syndicate Graph Cluster Match",
+      "category": "GRAPH",
+      "impact": "NEGATIVE",
+      "weight": 0.40,
+      "score": 0.01,
+      "description": "Device hash and payout routing account directly intersect Graph Cluster 'CLUSTER-RING-409' (14 connected nodes, circular rider-driver collusion)."
+    },
+    {
+      "name": "Device Farm Hardware Reuse",
+      "category": "DEVICE",
+      "impact": "NEGATIVE",
+      "weight": 0.30,
+      "score": 0.04,
+      "description": "Redmi 9A device fingerprint previously bound to 9 distinct rider accounts in the last 72 hours."
+    },
+    {
+      "name": "Biometric Spoof / Deepfake Attack",
+      "category": "BIOMETRIC",
+      "impact": "NEGATIVE",
+      "weight": 0.20,
+      "score": 0.08,
+      "description": "Simulated face presentation attack detected (printed photo / replay video pattern)."
+    },
+    {
+      "name": "High Velocity Promo Extraction",
+      "category": "PAYOUT",
+      "impact": "NEGATIVE",
+      "weight": 0.10,
+      "score": 0.05,
+      "description": "Coordinated zero-mile trip with maximum promo credit extraction."
+    }
+  ],
+  "challenge": null,
+  "case_id": "case_ring_9005",
+  "payout_decision": {
+    "status": "DENIED",
+    "hold_reason": "Immediate blocking due to confirmed collusion syndicate membership (CLUSTER-RING-409)",
+    "hold_period_hours": 720
+  },
+  "evaluated_at": "2026-10-17T19:30:02Z"
+}

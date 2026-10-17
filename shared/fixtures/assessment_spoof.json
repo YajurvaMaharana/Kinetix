@@ -1,0 +1,61 @@
+{
+  "assessment_id": "eval_spoof_9004",
+  "session_id": "sess_spoof_9004",
+  "rider_id": "rider_global_susp_7719",
+  "trust_score": 18.0,
+  "verdict": "INVESTIGATE",
+  "risk_tier": "HIGH",
+  "threat_tags": [
+    "GEO_SPOOF",
+    "EMULATOR_DETECTED"
+  ],
+  "factors": [
+    {
+      "name": "Synthetic Device Fingerprint",
+      "category": "DEVICE",
+      "impact": "NEGATIVE",
+      "weight": 0.35,
+      "score": 0.05,
+      "description": "Android x86 SDK emulator detected with root hooks and 0.0% battery drain rate."
+    },
+    {
+      "name": "Mock Location Injected",
+      "category": "LOCATION",
+      "impact": "NEGATIVE",
+      "weight": 0.35,
+      "score": 0.02,
+      "description": "Mock location provider flag is true; telemetry reports impossible speed (220 km/h) with zero sensor jitter."
+    },
+    {
+      "name": "Biometric Absence",
+      "category": "BIOMETRIC",
+      "impact": "NEGATIVE",
+      "weight": 0.20,
+      "score": 0.05,
+      "description": "No genuine face sensor stream provided; synthetic injection detected."
+    },
+    {
+      "name": "Payment Instrument Risk",
+      "category": "PAYOUT",
+      "impact": "NEGATIVE",
+      "weight": 0.10,
+      "score": 0.20,
+      "description": "High tip ratio on anonymous prepaid card."
+    }
+  ],
+  "challenge": {
+    "challenge_id": "chlg_hw_9004",
+    "session_id": "sess_spoof_9004",
+    "challenge_type": "DEVICE_REAUTH",
+    "status": "PENDING",
+    "expires_at": "2026-10-17T19:20:00Z",
+    "created_at": "2026-10-17T19:15:02Z"
+  },
+  "case_id": "case_spoof_9004",
+  "payout_decision": {
+    "status": "ESCROW_HOLD",
+    "hold_reason": "Escalated to Fraud Investigation Queue due to emulator spoofing signals",
+    "hold_period_hours": 24
+  },
+  "evaluated_at": "2026-10-17T19:15:02Z"
+}

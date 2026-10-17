@@ -1,0 +1,48 @@
+{
+  "session_id": "sess_norm_9001",
+  "rider_id": "rider_us_east_4102",
+  "driver_id": "drv_8821",
+  "timestamp": "2026-10-17T18:30:00Z",
+  "device_passport": {
+    "device_id_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "device_model": "iPhone 15 Pro",
+    "os_version": "iOS 18.2",
+    "app_version": "2.4.1",
+    "ip_address": "198.51.100.42",
+    "carrier": "T-Mobile US",
+    "vpn_detected": false,
+    "mock_location_detected": false,
+    "rooted_or_jailbroken": false,
+    "screen_resolution": "1179x2556",
+    "battery_drain_rate_pct_hr": 3.2
+  },
+  "biometrics": {
+    "face_present": true,
+    "face_match_confidence": 0.98,
+    "liveness_score": 0.96,
+    "biometric_backend": "simulated"
+  },
+  "telemetry": {
+    "speed_kmh": 38.5,
+    "acceleration_variance": 0.14,
+    "gyro_stability": 0.92,
+    "typing_cadence_cpm": 240,
+    "route_deviation_pct": 2.1,
+    "trip_distance_km": 6.8,
+    "elapsed_minutes": 14.5
+  },
+  "location": {
+    "lat": 40.7128,
+    "lng": -74.0060,
+    "accuracy_meters": 4.5,
+    "geofence_id": "nyc_manhattan_core",
+    "zone_risk_level": "LOW"
+  },
+  "financial": {
+    "fare_amount": 28.50,
+    "currency": "USD",
+    "payment_method": "apple_pay",
+    "tip_amount": 5.00,
+    "promo_applied": false
+  }
+}
