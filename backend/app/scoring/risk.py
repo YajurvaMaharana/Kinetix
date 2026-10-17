@@ -77,6 +77,8 @@ class ScoredAssessment:
     latency_ms: float
     model_version: str = "tj-hybrid-0.2"
     policy_version: str = "v2.4.0"
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
 
 
 # Alias for backward compatibility
@@ -152,7 +154,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     else:
         continuity = behavior_continuity(behavior_dev, cfg.behavior_continuity_threshold)
         known_zone = known_zone_share(zone_id, ctx.baseline)
-        trusted_dev = trusted_device_signal(ctx.device_passport, dev_res.is_new_device)
+        trusted_dev = trusted_device_signal(ctx.device_passport, dev_res.is_new_device, baseline=ctx.baseline)
         health_bonus = trust_health_bonus(trust_health_val)
 
     # 8. Compute Point Components
@@ -316,6 +318,10 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     )
     top_metrics = [k for k, v in sorted_metric_devs if v > 0.25]
 
+    # Detect benign change type & adaptation progress
+    from app.services.baseline_service import baseline_service
+    detected_change_type, detected_progress = baseline_service.detect_change_type(ctx, cfg)
+
     context_details = {
         "behavior_dev": behavior_dev,
         "env_change": env,
@@ -335,6 +341,8 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         "zone_id": str(zone_id or ""),
         "top_deviated_metrics": top_metrics,
         "recommended_action": recommended_action,
+        "change_type": detected_change_type,
+        "adaptation_progress": detected_progress,
     }
 
     explanation_res = generate_explanation(
@@ -394,6 +402,8 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         latency_ms=latency_ms,
         model_version="tj-hybrid-0.2",
         policy_version=cfg.version,
+        change_type=detected_change_type,
+        adaptation_progress=detected_progress,
     )
 
 

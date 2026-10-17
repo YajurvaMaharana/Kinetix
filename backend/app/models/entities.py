@@ -97,6 +97,7 @@ class RiderBaseline(Base):
     typical_hours: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     metrics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     profiles_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    adaptation_state_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     rider: Mapped["Rider"] = relationship("Rider", back_populates="baseline")

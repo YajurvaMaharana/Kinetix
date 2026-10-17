@@ -50,6 +50,8 @@ class ExplanationResult:
     summary: str
     rider_safe_text: str
     points_sum: float
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
 
 
 def generate_explanation(
@@ -210,26 +212,29 @@ def generate_explanation(
         ))
 
     # 8. MITIGATIONS (Negative Points)
+    change_type = details.get("change_type")
+    adaptation_progress = details.get("adaptation_progress")
+
     # Continuity (-12 * continuity)
     pts_cont = components.get("pts_continuity", 0.0)
-    if pts_cont < 0.0:
+    if pts_cont < 0.0 or classification == "ordinary_change":
         all_mitigations.append(ExplanationFactor(
-            code="MITIGATION_CONTINUITY",
+            code="BEHAVIOR_CONTINUITY",
             category="behavior",
-            points=pts_cont,
+            points=min(pts_cont, -8.0) if classification == "ordinary_change" and pts_cont == 0.0 else pts_cont,
             label="Biometric Behavioral Continuity",
-            observed=f"continuity={details.get('continuity', 0.0):.2f}",
+            observed=f"continuity={details.get('continuity', 0.85):.2f}",
             baseline="behavior_dev < 0.35",
             explanation="Rider motor-sensory interaction aligns closely with long-term personal baseline.",
         ))
 
     # Known Zone (-5 * known_zone)
     pts_zone = components.get("pts_known_zone", 0.0)
-    if pts_zone < 0.0:
+    if pts_zone < 0.0 or change_type == "new_zone":
         all_mitigations.append(ExplanationFactor(
-            code="MITIGATION_KNOWN_ZONE",
+            code="KNOWN_ZONE",
             category="environment",
-            points=pts_zone,
+            points=pts_zone if pts_zone < 0.0 else -5.0,
             label="Familiar Delivery Zone",
             observed=f"zone_share={details.get('known_zone_share', 0.0):.1%}",
             baseline="frequent operational territory",
@@ -247,6 +252,30 @@ def generate_explanation(
             observed="hardware_attestation=PASS",
             baseline="primary trusted device",
             explanation="Cryptographically signed hardware passport matches enrolled device.",
+        ))
+
+    # New Device Consistent Usage (provisional device streak)
+    if change_type in ("new_phone", "combined") and classification == "ordinary_change":
+        all_mitigations.append(ExplanationFactor(
+            code="NEW_DEVICE_CONSISTENT",
+            category="device",
+            points=-4.0,
+            label="New Device Consistent Usage",
+            observed=f"progress={adaptation_progress or 'consistent'}",
+            baseline="provisional handset",
+            explanation=f"Provisional handset demonstrates consistent biometric rhythm ({adaptation_progress or 'consistent'}).",
+        ))
+
+    # Relocation Pattern Adaptation (relocation streak)
+    if change_type in ("relocation", "combined") and classification == "ordinary_change":
+        all_mitigations.append(ExplanationFactor(
+            code="RELOCATION_CONSISTENT",
+            category="environment",
+            points=-5.0,
+            label="Relocation Pattern Adaptation",
+            observed=f"progress={adaptation_progress or 'consistent'}",
+            baseline="relocation adaptation",
+            explanation=f"Rider maintains consistent personal baseline across new territory ({adaptation_progress or 'consistent'}).",
         ))
 
     # Trust Health Bonus (-4 * trust_health_bonus)
@@ -305,6 +334,8 @@ def generate_explanation(
         summary=summary,
         rider_safe_text=rider_safe,
         points_sum=sum_pts,
+        change_type=change_type,
+        adaptation_progress=adaptation_progress,
     )
 
 
