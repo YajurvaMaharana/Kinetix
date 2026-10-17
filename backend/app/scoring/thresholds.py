@@ -158,6 +158,16 @@ class ThresholdConfig:
     spoof_jitter_floor: float = 1.5             # Spoof bearing jitter floor (< 1.5 deg)
     spoof_min_pings: int = 8                    # Minimum pings required for route test
 
+    # --------------------------------------------------------------------------
+    # 11. Baseline Adaptation Parameters
+    # --------------------------------------------------------------------------
+    device_adaptation_sessions: int = 3         # Sessions required to trust new device
+    relocation_adaptation_sessions: int = 5     # Sessions required to adapt city
+    relocation_adaptation_days: int = 2         # Distinct calendar days required
+    zone_adaptation_sessions: int = 3           # Sessions required to adapt zone
+    adaptation_consistency_dev_limit: float = 0.35  # behavior_dev must be < 0.35
+    adaptation_graph_risk_limit: float = 0.5    # graph_risk must be < 0.5
+
     @classmethod
 
     def from_policy_config(cls, policy_config_or_dict: Optional[Any] = None) -> "ThresholdConfig":
