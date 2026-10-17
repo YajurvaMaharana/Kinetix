@@ -1,5 +1,7 @@
+from typing import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.config import settings
 
@@ -16,3 +18,32 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
 Base = declarative_base()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """
+    FastAPI dependency yielding a transactional SQLAlchemy database session.
+    Automatically closes session after request finishes.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def create_all(target_engine=None):
+    """
+    Initializes and creates all database tables.
+    """
+    eng = target_engine or engine
+    import app.models  # noqa: F401
+    Base.metadata.create_all(bind=eng)
+
+
+def drop_all(target_engine=None):
+    """
+    Drops all tables (used for test setup/teardown and demo resets).
+    """
+    eng = target_engine or engine
+    Base.metadata.drop_all(bind=eng)
