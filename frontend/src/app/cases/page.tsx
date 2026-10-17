@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { getActiveRole } from "@/lib/api";
+import { Role } from "@/lib/types";
 import {
   FolderKanban,
   Clock,
@@ -32,6 +34,15 @@ interface AuditEntry {
 function CasesContent() {
   const searchParams = useSearchParams();
   const requestedCaseId = searchParams?.get("id");
+
+  const [activeRole, setActiveRoleState] = useState<Role>("analyst");
+
+  useEffect(() => {
+    setActiveRoleState(getActiveRole());
+    const onRoleChanged = () => setActiveRoleState(getActiveRole());
+    window.addEventListener("trustjuggler:role_changed", onRoleChanged);
+    return () => window.removeEventListener("trustjuggler:role_changed", onRoleChanged);
+  }, []);
 
   const [activeTab, setActiveTab] = useState<"DOSSIER" | "QUEUE">(
     requestedCaseId ? "DOSSIER" : "DOSSIER"
@@ -516,33 +527,54 @@ function CasesContent() {
             </div>
 
             {/* Risk Scores Box */}
-            <div className="rounded-xl border border-slate-800 bg-[#080B12] p-4 space-y-3">
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs font-mono text-slate-400">System Composite Risk</span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold font-mono text-[#FB7185]">89</span>
-                  <span className="text-xs text-slate-500 font-mono">/ 100</span>
+            {activeRole === "rider" ? (
+              <div className="rounded-xl border border-slate-800 bg-[#080B12] p-4 space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-mono text-slate-400">Account Safety Status</span>
+                  <span className="rounded border border-[#FBBF24]/40 bg-[#FBBF24]/10 px-2 py-0.5 text-xs font-mono font-bold text-[#FBBF24]">
+                    VERIFICATION PENDING
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+                  <span>Tenure Safeguard: </span>
+                  <strong className="text-[#34D399]">18-Month Clean History Protected</strong>
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <span className="text-xs text-slate-300 font-semibold">Integrity Protocol</span>
+                  <span className="rounded border border-[#56D9F5]/40 bg-[#56D9F5]/10 px-2 py-0.5 text-xs font-mono font-bold text-[#56D9F5]">
+                    ZERO-LOCKOUT v2.4
+                  </span>
                 </div>
               </div>
+            ) : (
+              <div className="rounded-xl border border-slate-800 bg-[#080B12] p-4 space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-mono text-slate-400">System Composite Risk</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-extrabold font-mono text-[#FB7185]">89</span>
+                    <span className="text-xs text-slate-500 font-mono">/ 100</span>
+                  </div>
+                </div>
 
-              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-semibold text-slate-300 block">Calibrated Misuse Prob</span>
-                  <span className="text-[10px] text-slate-500 font-mono">Bayesian Model Prior v2.4</span>
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-300 block">Calibrated Misuse Prob</span>
+                    <span className="text-[10px] text-slate-500 font-mono">Bayesian Model Prior v2.4</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-bold font-mono text-[#A78BFA]">0.89</span>
+                    <span className="text-[10px] text-slate-500 font-mono block">Brier: 0.019</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-xl font-bold font-mono text-[#A78BFA]">0.89</span>
-                  <span className="text-[10px] text-slate-500 font-mono block">Brier: 0.019</span>
-                </div>
-              </div>
 
-              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                <span className="text-xs text-slate-300 font-semibold">Backend Decision</span>
-                <span className="rounded border border-[#FB7185]/40 bg-[#FB7185]/10 px-2 py-0.5 text-xs font-mono font-bold text-[#FB7185]">
-                  ESCALATE (v2.4-Gov)
-                </span>
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <span className="text-xs text-slate-300 font-semibold">Backend Decision</span>
+                  <span className="rounded border border-[#FB7185]/40 bg-[#FB7185]/10 px-2 py-0.5 text-xs font-mono font-bold text-[#FB7185]">
+                    ESCALATE (v2.4-Gov)
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Resolution Note Banner */}
             {resolutionNote && (
@@ -553,33 +585,54 @@ function CasesContent() {
             )}
 
             {/* Interactive Decision Actions */}
-            <div className="space-y-2.5">
-              <span className="text-xs font-semibold text-slate-300 block">Available Triage Actions:</span>
+            {activeRole === "rider" ? (
+              <div className="rounded-xl border border-slate-800 bg-[#080B12] p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <ShieldCheck className="h-4 w-4 text-[#56D9F5]" />
+                  <span>Rider Safety Self-Service</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Forensic triage actions (Biometric Challenge, Dispatch Suspension, Case Dismissal) are restricted to Trust &amp; Safety SOC Analysts.
+                </p>
+                <button
+                  onClick={() => {
+                    setResolutionNote("Verification ping acknowledged by driver mobile terminal.");
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#56D9F5] py-2.5 px-4 text-xs font-bold text-[#003640] hover:brightness-110 active:scale-95 transition-all shadow-md shadow-[#56D9F5]/20 cursor-pointer"
+                >
+                  <Smartphone className="h-4 w-4" />
+                  Acknowledge Mobile Verification Alert
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <span className="text-xs font-semibold text-slate-300 block">Available Triage Actions:</span>
 
-              <button
-                onClick={handleTriggerStepUp}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#56D9F5] py-2.5 px-4 text-xs font-bold text-[#003640] hover:brightness-110 active:scale-95 transition-all shadow-md shadow-[#56D9F5]/20 cursor-pointer"
-              >
-                <Camera className="h-4 w-4" />
-                Trigger Biometric Step-Up Challenge
-              </button>
+                <button
+                  onClick={handleTriggerStepUp}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#56D9F5] py-2.5 px-4 text-xs font-bold text-[#003640] hover:brightness-110 active:scale-95 transition-all shadow-md shadow-[#56D9F5]/20 cursor-pointer"
+                >
+                  <Camera className="h-4 w-4" />
+                  Trigger Biometric Step-Up Challenge
+                </button>
 
-              <button
-                onClick={handleRestrictDispatch}
-                className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#FBBF24]/40 bg-[#FBBF24]/10 py-2.5 px-4 text-xs font-bold text-[#FBBF24] hover:bg-[#FBBF24]/20 active:scale-95 transition-all cursor-pointer"
-              >
-                <PauseCircle className="h-4 w-4" />
-                Temporarily Restrict Session Dispatch
-              </button>
+                <button
+                  onClick={handleRestrictDispatch}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#FBBF24]/40 bg-[#FBBF24]/10 py-2.5 px-4 text-xs font-bold text-[#FBBF24] hover:bg-[#FBBF24]/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  <PauseCircle className="h-4 w-4" />
+                  Temporarily Restrict Session Dispatch
+                </button>
 
-              <button
-                onClick={handleClearCase}
-                className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#34D399]/40 bg-[#34D399]/10 py-2.5 px-4 text-xs font-bold text-[#34D399] hover:bg-[#34D399]/20 active:scale-95 transition-all cursor-pointer"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Clear Anomaly (Dismiss False Positive)
-              </button>
-            </div>
+                <button
+                  onClick={handleClearCase}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#34D399]/40 bg-[#34D399]/10 py-2.5 px-4 text-xs font-bold text-[#34D399] hover:bg-[#34D399]/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Clear Anomaly (Dismiss False Positive)
+                </button>
+              </div>
+            )}
 
             {/* Escalation Policy Disclosure */}
             <div className="rounded-lg bg-[#080B12] p-3 text-[11px] text-slate-400 space-y-1 font-sans">

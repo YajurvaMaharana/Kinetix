@@ -17,16 +17,11 @@ import {
   MapPin,
   Clock,
   ChevronRight,
-  Sliders,
-  FolderKanban,
-  GitFork,
-  Banknote,
-  Scale,
-  Sparkles,
-  ArrowRight,
+  UserCheck,
+  Info,
 } from "lucide-react";
 import { HealthStatus, Role } from "@/lib/types";
-import { getHealth, getActiveRole } from "@/lib/api";
+import { getHealth, getActiveRole, setActiveRole } from "@/lib/api";
 
 interface SessionDeskItem {
   id: string;
@@ -159,6 +154,107 @@ const liveSignals = [
   },
 ];
 
+type TimeRangeKey = "15m" | "1h" | "24h" | "7d";
+
+interface TimeRangeData {
+  range: TimeRangeKey;
+  label: string;
+  sublabel: string;
+  timeAxis: string[];
+  normalLinePath: string;
+  normalAreaPath: string;
+  anomalyLinePath: string;
+  anomalyAreaPath: string;
+  peakPoint: { cx: number; cy: number; normalCy: number };
+  peakIncident: string;
+  peakScore: number;
+  peakSeverity: "HIGH" | "CRITICAL" | "BLOCK";
+  eventsProcessed: string;
+  avgLatency: string;
+  anomalyRatio: string;
+  brierScore: string;
+  surgeTrend: string;
+}
+
+const timeSeriesDatasets: Record<TimeRangeKey, TimeRangeData> = {
+  "15m": {
+    range: "15m",
+    label: "Last 15 Minutes",
+    sublabel: "1-minute telemetry resolution · Real-time socket window",
+    timeAxis: ["15:00", "15:03", "15:06", "15:09", "15:12", "15:15"],
+    normalLinePath: "M 0 160 Q 95 150 190 155 T 380 145 T 570 150 T 760 148",
+    normalAreaPath: "M 0 160 Q 95 150 190 155 T 380 145 T 570 150 T 760 148 L 760 200 L 0 200 Z",
+    anomalyLinePath: "M 0 195 Q 150 190 300 185 Q 400 170 475 75 Q 520 85 570 185 T 760 192",
+    anomalyAreaPath: "M 0 195 Q 150 190 300 185 Q 400 170 475 75 Q 520 85 570 185 T 760 192 L 760 200 L 0 200 Z",
+    peakPoint: { cx: 475, cy: 75, normalCy: 148 },
+    peakIncident: "15:11 UTC (Kinematic Cadence Jitter · 95 cpm)",
+    peakScore: 72,
+    peakSeverity: "HIGH",
+    eventsProcessed: "3,140 events",
+    avgLatency: "11.8ms",
+    anomalyRatio: "1.8%",
+    brierScore: "0.014",
+    surgeTrend: "+0.4% vs median",
+  },
+  "1h": {
+    range: "1h",
+    label: "Last 1 Hour",
+    sublabel: "5-minute rolling window · Ingested delivery velocity vs anomaly threshold",
+    timeAxis: ["14:15", "14:30", "14:45", "15:00", "15:15"],
+    normalLinePath: "M 0 170 Q 70 160 130 145 T 260 130 T 380 120 T 500 135 T 600 95 T 670 125 T 760 110",
+    normalAreaPath: "M 0 170 Q 70 160 130 145 T 260 130 T 380 120 T 500 135 T 600 95 T 670 125 T 760 110 L 760 200 L 0 200 Z",
+    anomalyLinePath: "M 0 200 Q 120 195 240 190 T 390 185 T 510 180 T 570 145 Q 590 55 605 52 Q 620 62 635 155 T 700 185 T 760 190",
+    anomalyAreaPath: "M 0 200 Q 120 195 240 190 T 390 185 T 510 180 T 570 145 Q 590 55 605 52 Q 620 62 635 155 T 700 185 T 760 190 L 760 200 L 0 200 Z",
+    peakPoint: { cx: 605, cy: 52, normalCy: 95 },
+    peakIncident: "14:32 UTC (Dual GPS Jump · +14km in 180s)",
+    peakScore: 89,
+    peakSeverity: "CRITICAL",
+    eventsProcessed: "14,892 events",
+    avgLatency: "14.2ms",
+    anomalyRatio: "3.4%",
+    brierScore: "0.019",
+    surgeTrend: "+2.1% vs median",
+  },
+  "24h": {
+    range: "24h",
+    label: "Last 24 Hours",
+    sublabel: "Diurnal fleet telemetry · Rush-hour transit vs nighttime syndicate bursts",
+    timeAxis: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "Now"],
+    normalLinePath: "M 0 180 Q 95 190 190 165 T 380 110 T 570 130 T 760 150",
+    normalAreaPath: "M 0 180 Q 95 190 190 165 T 380 110 T 570 130 T 760 150 L 760 200 L 0 200 Z",
+    anomalyLinePath: "M 0 195 Q 60 190 120 185 Q 170 170 210 45 Q 250 80 320 185 T 500 188 T 760 190",
+    anomalyAreaPath: "M 0 195 Q 60 190 120 185 Q 170 170 210 45 Q 250 80 320 185 T 500 188 T 760 190 L 760 200 L 0 200 Z",
+    peakPoint: { cx: 210, cy: 45, normalCy: 165 },
+    peakIncident: "03:15 UTC (Cluster-409 Midnight Batch Drain)",
+    peakScore: 94,
+    peakSeverity: "CRITICAL",
+    eventsProcessed: "242,100 events",
+    avgLatency: "15.8ms",
+    anomalyRatio: "5.2%",
+    brierScore: "0.023",
+    surgeTrend: "+5.8% overnight surge",
+  },
+  "7d": {
+    range: "7d",
+    label: "Last 7 Days",
+    sublabel: "Weekly aggregated baseline · Macro anomaly trends across transit corridors",
+    timeAxis: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    normalLinePath: "M 0 145 Q 100 130 200 140 T 400 135 T 550 100 T 760 115",
+    normalAreaPath: "M 0 145 Q 100 130 200 140 T 400 135 T 550 100 T 760 115 L 760 200 L 0 200 Z",
+    anomalyLinePath: "M 0 190 Q 120 185 240 188 T 420 180 Q 500 160 540 38 Q 580 80 640 175 T 760 182",
+    anomalyAreaPath: "M 0 190 Q 120 185 240 188 T 420 180 Q 500 160 540 38 Q 580 80 640 175 T 760 182 L 760 200 L 0 200 Z",
+    peakPoint: { cx: 540, cy: 38, normalCy: 100 },
+    peakIncident: "Friday 23:10 UTC (Redmi Farm Syndicate Ring · 14 Nodes)",
+    peakScore: 96,
+    peakSeverity: "BLOCK",
+    eventsProcessed: "1,480,000 events",
+    avgLatency: "16.4ms",
+    anomalyRatio: "6.1%",
+    brierScore: "0.026",
+    surgeTrend: "+8.4% weekend cluster",
+  },
+};
+
 export default function SecurityOverviewPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loadingHealth, setLoadingHealth] = useState<boolean>(true);
@@ -251,6 +347,7 @@ export default function SecurityOverviewPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Active Role Pill */}
           <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-[#101521] px-3 py-1.5 text-xs">
+            <UserCheck className="h-3.5 w-3.5 text-[#A78BFA]" />
             <span className="text-slate-400">Persona:</span>
             <span className="font-mono font-bold text-[#A78BFA] uppercase">{activeRole}</span>
           </div>
@@ -278,6 +375,103 @@ export default function SecurityOverviewPage() {
             <RefreshCw className={`h-3.5 w-3.5 ${loadingHealth ? "animate-spin" : ""}`} />
             Pings
           </button>
+        </div>
+      </div>
+
+      {/* PERSONA & ROLE SIMULATION BANNER */}
+      <div
+        className={`rounded-xl border p-4 space-y-3 transition-colors ${
+          activeRole === "rider"
+            ? "border-amber-500/30 bg-amber-950/20"
+            : activeRole === "finance"
+            ? "border-emerald-500/30 bg-emerald-950/20"
+            : activeRole === "admin"
+            ? "border-purple-500/30 bg-purple-950/20"
+            : activeRole === "investigator"
+            ? "border-rose-500/30 bg-rose-950/20"
+            : activeRole === "system"
+            ? "border-sky-500/30 bg-sky-950/20"
+            : "border-[#56D9F5]/30 bg-[#56D9F5]/5"
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`h-9 w-9 rounded-lg flex items-center justify-center font-bold text-sm ${
+                activeRole === "rider"
+                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  : activeRole === "finance"
+                  ? "bg-emerald-500/20 text-[#34D399] border border-emerald-500/30"
+                  : activeRole === "admin"
+                  ? "bg-purple-500/20 text-[#A78BFA] border border-purple-500/30"
+                  : activeRole === "investigator"
+                  ? "bg-rose-500/20 text-[#FB7185] border border-rose-500/30"
+                  : activeRole === "system"
+                  ? "bg-sky-500/20 text-[#38BDF8] border border-sky-500/30"
+                  : "bg-[#56D9F5]/20 text-[#56D9F5] border border-[#56D9F5]/30"
+              }`}
+            >
+              <UserCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-white capitalize">{activeRole} Mode Active</span>
+                <span className="rounded font-mono px-2 py-0.5 text-[10px] uppercase font-bold border border-slate-700 bg-[#080B12] text-slate-300">
+                  {activeRole === "rider"
+                    ? "Masked Forensics (Courier Privacy)"
+                    : activeRole === "finance"
+                    ? "Escrow & Payout Control"
+                    : activeRole === "admin"
+                    ? "Full Policy & Rule Authority"
+                    : activeRole === "investigator"
+                    ? "Forensic Dossiers & Graphs"
+                    : activeRole === "system"
+                    ? "Low-Level Telemetry Daemon"
+                    : "Full SOC Triage Desk"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {activeRole === "rider"
+                  ? "Rider & courier safe view: raw anomaly vectors, cluster names, and analyst triage buttons are masked for privacy."
+                  : activeRole === "finance"
+                  ? "Treasury & Escrow focus: automated holds, payout ledger clearance, and fraud loss prevention indicators."
+                  : activeRole === "admin"
+                  ? "Administrator privileges: scoring decision boundary cut-lines, policy matrix thresholds, and system governance."
+                  : activeRole === "investigator"
+                  ? "Investigator view: deep case dossiers, hardware attribution, IMEI clustering, and graph syndicates."
+                  : activeRole === "system"
+                  ? "System daemon view: raw socket latency, engine ping metrics, and microservice health diagnostics."
+                  : "SOC Analyst view: full access to manual case queue, biometric mismatch triage, and live investigation desk."}
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Persona Selector */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+            {(["analyst", "admin", "investigator", "finance", "rider", "system"] as Role[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => {
+                  setActiveRole(r);
+                  setActiveRoleState(r);
+                }}
+                className={`rounded px-2 py-1 uppercase text-[11px] font-bold transition-all ${
+                  activeRole === r
+                    ? "bg-[#56D9F5] text-[#003640] shadow-md shadow-[#56D9F5]/20"
+                    : "bg-[#080B12] text-slate-400 border border-slate-800 hover:text-slate-200 hover:border-slate-700"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60 text-[10px] font-mono text-slate-500">
+          <Info className="h-3 w-3 text-slate-400" />
+          <span>
+            Demonstration Persona Simulation • API Client passes <code className="text-[#56D9F5]">X-Role: {activeRole}</code> • Client-side UI persona simulation (not a server security boundary)
+          </span>
         </div>
       </div>
 
@@ -353,107 +547,7 @@ export default function SecurityOverviewPage() {
         </div>
       </section>
 
-      {/* QUICK SUBSYSTEM CONSOLES NAVIGATION HUB */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-            <Server className="h-4 w-4 text-[#56D9F5]" />
-            Subsystem Operational Consoles
-          </h2>
-          <span className="text-[11px] font-mono text-slate-400">8 active telemetry targets</span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              title: "Live Monitor",
-              href: "/monitor",
-              icon: ShieldAlert,
-              desc: "Real-time rider sessions, risk tiers, and telemetry feeds.",
-              accent: "hover:border-[#56D9F5]/50 group-hover:text-[#56D9F5]",
-              badge: "LIVE FEED",
-            },
-            {
-              title: "Rider Simulator",
-              href: "/simulator",
-              icon: Sliders,
-              desc: "Inject handoffs, GPS spoofing, and emulator telemetry.",
-              accent: "hover:border-[#A78BFA]/50 group-hover:text-[#A78BFA]",
-              badge: "5 FIXTURES",
-            },
-            {
-              title: "Investigations",
-              href: "/cases",
-              icon: FolderKanban,
-              desc: "Analyst case dossier queue, manual review, and triage.",
-              accent: "hover:border-[#FB7185]/50 group-hover:text-[#FB7185]",
-              badge: "SOC QUEUE",
-            },
-            {
-              title: "Fraud Graph",
-              href: "/graph",
-              icon: GitFork,
-              desc: "Collusion ring cluster maps and device farm topology.",
-              accent: "hover:border-[#34D399]/50 group-hover:text-[#34D399]",
-              badge: "NETWORKX",
-            },
-            {
-              title: "Payouts",
-              href: "/payouts",
-              icon: Banknote,
-              desc: "Automated escrow hold and release controls for driver payouts.",
-              accent: "hover:border-[#38BDF8]/50 group-hover:text-[#38BDF8]",
-              badge: "ESCROW GUARD",
-            },
-            {
-              title: "Policy Simulator",
-              href: "/policy",
-              icon: Scale,
-              desc: "Adjust cut-lines and simulate friction vs fraud reduction.",
-              accent: "hover:border-[#FBBF24]/50 group-hover:text-[#FBBF24]",
-              badge: "CUT-LINES",
-            },
-            {
-              title: "Demo Controls",
-              href: "/demo",
-              icon: Sparkles,
-              desc: "1-click database reset, seed scenarios, and model retrain.",
-              accent: "hover:border-[#F472B6]/50 group-hover:text-[#F472B6]",
-              badge: "AUTOMATION",
-            },
-            {
-              title: "Evaluation",
-              href: "/evaluation",
-              icon: CheckCircle2,
-              desc: "Model benchmark metrics, ROC-AUC curve, and recall validation.",
-              accent: "hover:border-[#2DD4BF]/50 group-hover:text-[#2DD4BF]",
-              badge: "ROC-AUC 0.984",
-            },
-          ].map((card) => {
-            const CardIcon = card.icon;
-            return (
-              <Link
-                key={card.title}
-                href={card.href}
-                className={`group relative flex flex-col justify-between rounded-xl border border-slate-800 bg-[#101521] p-4 transition-all hover:bg-[#131b2e] hover:shadow-lg hover:shadow-[#080B12] cursor-pointer select-none ${card.accent}`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <CardIcon className="h-5 w-5 text-[#56D9F5] transition-transform group-hover:scale-110" />
-                    <span className="rounded bg-[#080B12] border border-slate-800 px-2 py-0.5 text-[9px] font-mono font-bold text-slate-400">
-                      {card.badge}
-                    </span>
-                  </div>
-                  <h3 className="mt-3 text-sm font-bold text-white flex items-center justify-between">
-                    <span>{card.title}</span>
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-600 transition-transform group-hover:translate-x-1 group-hover:text-[#56D9F5]" />
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-400 leading-relaxed font-sans">{card.desc}</p>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
+
 
       {/* LEVEL 1: TIME-SERIES ANOMALY ACTIVITY & CALIBRATED RISK */}
       <section className="grid gap-6 lg:grid-cols-12 items-start">
@@ -461,45 +555,58 @@ export default function SecurityOverviewPage() {
         <div className="lg:col-span-7 rounded-xl border border-slate-800 bg-[#101521] p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Activity className="h-4 w-4 text-[#56D9F5]" />
-                Identity Risk Activity (Time-Series)
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-[#56D9F5]" />
+                  Identity Risk Activity (Time-Series)
+                </h2>
+                <span className="rounded bg-[#56D9F5]/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#56D9F5] border border-[#56D9F5]/30">
+                  {timeSeriesDatasets[timeRange].label}
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Ingested delivery velocity vs synthetic anomaly score thresholds
+                {timeSeriesDatasets[timeRange].sublabel}
               </p>
             </div>
 
-            {/* Time toggles */}
-            <div className="flex items-center gap-1 rounded-lg bg-[#080B12] p-1 border border-slate-800 text-xs font-mono">
-              {(["15m", "1h", "24h", "7d"] as const).map((range) => (
-                <button
-                  key={range}
-                  onClick={() => setTimeRange(range)}
-                  className={`rounded px-2.5 py-1 transition-colors ${
-                    timeRange === range
-                      ? "bg-[#56D9F5]/20 text-[#56D9F5] font-bold border border-[#56D9F5]/30"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {range}
-                </button>
-              ))}
+            {/* Functional Time-range selector buttons */}
+            <div className="flex items-center gap-1 rounded-lg bg-[#080B12] p-1 border border-slate-800 text-xs font-mono" role="group" aria-label="Chart time range selector">
+              {(["15m", "1h", "24h", "7d"] as const).map((range) => {
+                const isSelected = timeRange === range;
+                return (
+                  <button
+                    key={range}
+                    onClick={() => setTimeRange(range)}
+                    aria-pressed={isSelected}
+                    aria-label={`Select ${range} time window`}
+                    className={`rounded px-2.5 py-1 transition-all cursor-pointer font-bold ${
+                      isSelected
+                        ? "bg-[#56D9F5]/20 text-[#56D9F5] border border-[#56D9F5]/40 shadow-sm shadow-[#56D9F5]/15"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-[#101521] border border-transparent"
+                    }`}
+                  >
+                    {range}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Area Chart SVG */}
-          <div className="relative h-60 w-full overflow-hidden rounded-lg bg-[#080B12] border border-slate-800/80 p-2">
-            <div className="absolute top-3 left-4 flex items-center gap-4 text-xs font-mono text-slate-400 z-20">
+          <div className="relative h-64 w-full overflow-hidden rounded-lg bg-[#080B12] border border-slate-800/80 p-2">
+            <div className="absolute top-3 left-4 flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400 z-20">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[#56D9F5]" /> Normal Telemetry Volume
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[#FB7185]" /> Anomaly Vectors
               </span>
+              <span className="rounded border border-slate-800 bg-[#101521] px-2 py-0.5 text-[10px] text-slate-400">
+                Simulated Fixtures
+              </span>
             </div>
 
-            <svg className="w-full h-full relative z-10" preserveAspectRatio="none" viewBox="0 0 760 220">
+            <svg className="w-full h-full relative z-10" preserveAspectRatio="none" viewBox="0 0 760 230">
               <defs>
                 <linearGradient id="chartCyanGrad" x1="0" x2="0" y1="0" y2="1">
                   <stop offset="0%" stopColor="#56D9F5" stopOpacity="0.35" />
@@ -507,40 +614,110 @@ export default function SecurityOverviewPage() {
                   <stop offset="100%" stopColor="#56D9F5" stopOpacity="0" />
                 </linearGradient>
                 <linearGradient id="chartCoralGrad" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#FB7185" stopOpacity="0.5" />
+                  <stop offset="0%" stopColor="#FB7185" stopOpacity="0.55" />
                   <stop offset="100%" stopColor="#FB7185" stopOpacity="0" />
                 </linearGradient>
               </defs>
+
+              {/* Grid Lines */}
+              <line x1="0" y1="60" x2="760" y2="60" stroke="#101521" strokeDasharray="2 2" strokeWidth="1" />
+              <line x1="0" y1="120" x2="760" y2="120" stroke="#101521" strokeDasharray="2 2" strokeWidth="1" />
+              <line x1="0" y1="180" x2="760" y2="180" stroke="#101521" strokeDasharray="2 2" strokeWidth="1" />
+
+              {/* Normal Telemetry Area & Stroke */}
               <path
-                d="M 0 170 Q 70 160 130 145 T 260 130 T 380 120 T 500 135 T 600 95 T 670 125 T 760 110 L 760 210 L 0 210 Z"
+                d={timeSeriesDatasets[timeRange].normalAreaPath}
                 fill="url(#chartCyanGrad)"
               />
               <path
-                d="M 0 170 Q 70 160 130 145 T 260 130 T 380 120 T 500 135 T 600 95 T 670 125 T 760 110"
+                d={timeSeriesDatasets[timeRange].normalLinePath}
                 fill="none"
                 stroke="#56D9F5"
                 strokeWidth="2.5"
               />
+
+              {/* Anomaly Vectors Area & Stroke */}
               <path
-                d="M 0 205 Q 120 200 240 195 T 390 190 T 510 185 T 570 150 Q 590 60 605 52 Q 620 62 630 160 T 700 190 T 760 195 L 760 210 L 0 210 Z"
+                d={timeSeriesDatasets[timeRange].anomalyAreaPath}
                 fill="url(#chartCoralGrad)"
               />
               <path
-                d="M 0 205 Q 120 200 240 195 T 390 190 T 510 185 T 570 150 Q 590 60 605 52 Q 620 62 630 160 T 700 190 T 760 195"
+                d={timeSeriesDatasets[timeRange].anomalyLinePath}
                 fill="none"
                 stroke="#FB7185"
                 strokeLinejoin="round"
                 strokeWidth="2.5"
               />
-              <line stroke="#56D9F5" strokeDasharray="3 3" strokeWidth="1.5" x1="605" x2="605" y1="15" y2="210" />
-              <circle cx="605" cy="52" fill="#FB7185" r="5" stroke="#080B12" strokeWidth="2" />
-              <circle cx="605" cy="95" fill="#56D9F5" r="4" stroke="#080B12" strokeWidth="1.5" />
+
+              {/* Peak Indicator Vertical Guideline & Points */}
+              <line
+                stroke="#56D9F5"
+                strokeDasharray="3 3"
+                strokeWidth="1.5"
+                x1={timeSeriesDatasets[timeRange].peakPoint.cx}
+                x2={timeSeriesDatasets[timeRange].peakPoint.cx}
+                y1="20"
+                y2="200"
+              />
+              <circle
+                cx={timeSeriesDatasets[timeRange].peakPoint.cx}
+                cy={timeSeriesDatasets[timeRange].peakPoint.cy}
+                fill="#FB7185"
+                r="5"
+                stroke="#080B12"
+                strokeWidth="2"
+              />
+              <circle
+                cx={timeSeriesDatasets[timeRange].peakPoint.cx}
+                cy={timeSeriesDatasets[timeRange].peakPoint.normalCy}
+                fill="#56D9F5"
+                r="4"
+                stroke="#080B12"
+                strokeWidth="1.5"
+              />
+
+              {/* Time Axis Baseline & Dynamic Labels */}
+              <line x1="0" y1="200" x2="760" y2="200" stroke="#1e293b" strokeWidth="1" />
+              {timeSeriesDatasets[timeRange].timeAxis.map((tick, index, arr) => {
+                const x = (index / (arr.length - 1)) * 710 + 25;
+                return (
+                  <g key={tick}>
+                    <line x1={x} y1="200" x2={x} y2="205" stroke="#475569" strokeWidth="1" />
+                    <text
+                      x={x}
+                      y="218"
+                      textAnchor="middle"
+                      className="fill-slate-500 font-mono text-[9px] select-none"
+                    >
+                      {tick}
+                    </text>
+                  </g>
+                );
+              })}
             </svg>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-            <span>Peak Incident: 14:32 UTC (Dual GPS Jump)</span>
-            <span className="text-[#34D399]">Avg Engine Latency: 14.2ms</span>
+          {/* Time-Dependent Incident & Metric Summary */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
+            <div className="flex items-center gap-2">
+              <span className="text-white font-medium">
+                {timeSeriesDatasets[timeRange].peakIncident}
+              </span>
+              <span
+                className={`rounded border px-1.5 py-0.2 text-[9px] font-bold ${
+                  timeSeriesDatasets[timeRange].peakSeverity === "BLOCK"
+                    ? "border-red-500/40 bg-red-500/10 text-red-400"
+                    : "border-[#FB7185]/40 bg-[#FB7185]/10 text-[#FB7185]"
+                }`}
+              >
+                Score {timeSeriesDatasets[timeRange].peakScore}
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span>Window: <strong className="text-slate-200">{timeSeriesDatasets[timeRange].eventsProcessed}</strong></span>
+              <span className="text-[#34D399]">Avg Latency: {timeSeriesDatasets[timeRange].avgLatency}</span>
+              <span className="text-slate-500">Anomaly Ratio: {timeSeriesDatasets[timeRange].anomalyRatio}</span>
+            </div>
           </div>
         </div>
 
@@ -645,8 +822,12 @@ export default function SecurityOverviewPage() {
             <thead className="border-b border-slate-800 bg-[#080B12] text-slate-400 font-sans uppercase text-[11px]">
               <tr>
                 <th className="p-3">Session &amp; Subject</th>
-                <th className="p-3">Risk Score</th>
-                <th className="p-3">Observed Anomaly Vector</th>
+                <th className="p-3">
+                  {activeRole === "rider" ? "Trust Status" : "Risk Score"}
+                </th>
+                <th className="p-3">
+                  {activeRole === "rider" ? "Account Security Notice" : "Observed Anomaly Vector"}
+                </th>
                 <th className="p-3">Mitigating Safeguard</th>
                 <th className="p-3">Engine Verdict</th>
                 <th className="p-3 text-right">Action</th>
@@ -670,18 +851,55 @@ export default function SecurityOverviewPage() {
                     </div>
                   </td>
                   <td className="p-3">
-                    <span
-                      className={`text-base font-extrabold ${
-                        s.riskScore >= 75 ? "text-[#FB7185]" : s.riskScore >= 40 ? "text-[#FBBF24]" : "text-[#34D399]"
-                      }`}
-                    >
-                      {s.riskScore}
-                    </span>
-                    <span className="text-slate-500 text-[11px]"> / 100</span>
+                    {activeRole === "rider" ? (
+                      <span
+                        className={`inline-block rounded border px-2 py-0.5 text-[10px] font-bold ${
+                          s.riskScore >= 75
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                            : s.riskScore >= 40
+                            ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-300"
+                            : "border-[#34D399]/40 bg-[#34D399]/10 text-[#34D399]"
+                        }`}
+                      >
+                        {s.riskScore >= 75
+                          ? "Security Check Required"
+                          : s.riskScore >= 40
+                          ? "Verification Pending"
+                          : "In Good Standing"}
+                      </span>
+                    ) : (
+                      <>
+                        <span
+                          className={`text-base font-extrabold ${
+                            s.riskScore >= 75 ? "text-[#FB7185]" : s.riskScore >= 40 ? "text-[#FBBF24]" : "text-[#34D399]"
+                          }`}
+                        >
+                          {s.riskScore}
+                        </span>
+                        <span className="text-slate-500 text-[11px]"> / 100</span>
+                      </>
+                    )}
                   </td>
                   <td className="p-3 font-sans">
-                    <span className="font-semibold text-slate-200 block">{s.anomalyVector}</span>
-                    <span className="text-[11px] text-slate-400">{s.anomalyDetail}</span>
+                    {activeRole === "rider" ? (
+                      <div>
+                        <span className="font-semibold text-slate-200 block">
+                          {s.riskScore >= 75
+                            ? "Device & Location Verification Required"
+                            : s.riskScore >= 40
+                            ? "Routine Cadence & Biometric Verification"
+                            : "Transit Corridor Cleared"}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Protected courier telemetry · Internal forensic diagnostics masked for privacy
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="font-semibold text-slate-200 block">{s.anomalyVector}</span>
+                        <span className="text-[11px] text-slate-400">{s.anomalyDetail}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="p-3 font-sans">
                     <span className="text-[11px] text-[#34D399] flex items-center gap-1 font-medium">
@@ -695,13 +913,20 @@ export default function SecurityOverviewPage() {
                     </span>
                   </td>
                   <td className="p-3 text-right">
-                    <Link
-                      href={`/cases?id=${s.caseId}`}
-                      className="inline-flex items-center gap-1 rounded bg-[#56D9F5]/10 px-2.5 py-1 text-[11px] font-semibold text-[#56D9F5] border border-[#56D9F5]/30 hover:bg-[#56D9F5]/20 transition-colors"
-                    >
-                      Investigate Dossier
-                      <ChevronRight className="h-3 w-3" />
-                    </Link>
+                    {activeRole === "rider" ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-[#080B12] border border-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
+                        <ShieldCheck className="h-3.5 w-3.5 text-[#34D399]" />
+                        Account Secure
+                      </span>
+                    ) : (
+                      <Link
+                        href={`/cases?id=${s.caseId}`}
+                        className="inline-flex items-center gap-1 rounded bg-[#56D9F5]/10 px-2.5 py-1 text-[11px] font-semibold text-[#56D9F5] border border-[#56D9F5]/30 hover:bg-[#56D9F5]/20 transition-colors"
+                      >
+                        Investigate Dossier
+                        <ChevronRight className="h-3 w-3" />
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}

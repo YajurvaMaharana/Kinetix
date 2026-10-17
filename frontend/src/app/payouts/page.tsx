@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Banknote, Lock } from "lucide-react";
+import { Banknote, Lock, ShieldCheck, AlertCircle } from "lucide-react";
+import { getActiveRole } from "@/lib/api";
+import { Role } from "@/lib/types";
 
 interface PayoutItem {
   id: string;
@@ -16,6 +18,14 @@ interface PayoutItem {
 }
 
 export default function PayoutsPage() {
+  const [activeRole, setActiveRoleState] = useState<Role>("analyst");
+
+  useEffect(() => {
+    setActiveRoleState(getActiveRole());
+    const onRoleChanged = () => setActiveRoleState(getActiveRole());
+    window.addEventListener("trustjuggler:role_changed", onRoleChanged);
+    return () => window.removeEventListener("trustjuggler:role_changed", onRoleChanged);
+  }, []);
   const [payouts, setPayouts] = useState<PayoutItem[]>([
     {
       id: "pay_99812",
@@ -110,6 +120,31 @@ export default function PayoutsPage() {
         </div>
       </div>
 
+      {/* Role Adaptation Banner */}
+      {activeRole === "finance" ? (
+        <div className="rounded-xl border border-[#34D399]/40 bg-[#34D399]/10 p-3.5 flex items-center justify-between text-xs text-[#34D399]">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+            <div>
+              <span className="font-bold uppercase tracking-wider text-[11px] block text-white">Finance Lead Console Active</span>
+              <span>Full treasury authorization enabled. Payout hold releases and syndicate loss intercepts are logged to the audit ledger.</span>
+            </div>
+          </div>
+          <span className="rounded bg-[#34D399]/20 px-2.5 py-1 text-[10px] font-mono font-bold text-white uppercase">Authorized</span>
+        </div>
+      ) : activeRole === "rider" ? (
+        <div className="rounded-xl border border-[#56D9F5]/40 bg-[#56D9F5]/10 p-3.5 flex items-center justify-between text-xs text-[#56D9F5]">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <div>
+              <span className="font-bold uppercase tracking-wider text-[11px] block text-white">Rider Account Disbursement View</span>
+              <span>Displaying personal earnings status and payout safety locks. Manual escrow releases require Finance or Security Admin authorization.</span>
+            </div>
+          </div>
+          <span className="rounded bg-[#56D9F5]/20 px-2.5 py-1 text-[10px] font-mono font-bold text-white uppercase">Rider Mode</span>
+        </div>
+      ) : null}
+
       {/* KPI Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-800 bg-[#101521] p-4 space-y-1">
@@ -181,15 +216,30 @@ export default function PayoutsPage() {
                       {p.status}
                     </span>
                   </td>
-                  <td className="p-3 text-slate-300 font-sans">{p.reason}</td>
+                  <td className="p-3 text-slate-300 font-sans">
+                    {activeRole === "rider"
+                      ? p.reason
+                          .replace(/Member of syndicate CLUSTER-RING-409.*$/, "Destination account under standard verification review.")
+                          .replace(/Held 24h pending emulator investigation.*$/, "Held 24h pending biometric device re-authentication.")
+                      : p.reason}
+                  </td>
                   <td className="p-3 text-right">
                     {p.status === "ESCROW_HOLD" ? (
-                      <button
-                        onClick={() => handleReleaseEscrow(p.id)}
-                        className="rounded bg-[#34D399]/10 text-[#34D399] border border-[#34D399]/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-[#34D399]/20 transition-all cursor-pointer"
-                      >
-                        Release Hold
-                      </button>
+                      activeRole === "rider" ? (
+                        <span
+                          className="rounded bg-[#FBBF24]/10 text-[#FBBF24] border border-[#FBBF24]/30 px-2.5 py-1 text-[11px] font-semibold inline-block"
+                          title="Escrow release requires Finance or Admin approval"
+                        >
+                          Review Pending
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleReleaseEscrow(p.id)}
+                          className="rounded bg-[#34D399]/10 text-[#34D399] border border-[#34D399]/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-[#34D399]/20 transition-all cursor-pointer"
+                        >
+                          Release Hold
+                        </button>
+                      )
                     ) : (
                       <span className="text-slate-500 text-[10px]">Settled</span>
                     )}
