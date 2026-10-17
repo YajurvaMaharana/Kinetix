@@ -46,8 +46,9 @@ def drop_all(target_engine=None):
     Drops all tables (used for test setup/teardown and demo resets).
     """
     eng = target_engine or engine
-    import app.models  # noqa: F401
     from sqlalchemy import text
+
+    import app.models  # noqa: F401
     try:
         with eng.connect() as conn:
             if eng.dialect.name == "sqlite":
