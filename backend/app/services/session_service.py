@@ -136,7 +136,9 @@ class SessionService:
         elif req.device:
             dev_info = req.device.model_dump()
 
-        raw_fingerprint = dev_info.get("device_id_hash") or dev_info.get("fingerprint") or session_id
+        raw_fingerprint = (
+            dev_info.get("device_id_hash") or dev_info.get("fingerprint") or session_id
+        )
         raw_ip = dev_info.get("ip_address") or "192.0.2.1"
 
         # TOKENIZE at edge before persistence
@@ -326,7 +328,9 @@ class SessionService:
 
         # 2. Rescore by invoking ONLY score_session
         device = db.query(Device).filter(Device.id == session.device_id).first()
-        baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        baseline = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        )
         policy = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
 
         ctx = ScoringContext(
@@ -393,7 +397,13 @@ class SessionService:
                 created_at=chlg.created_at.isoformat(),
             )
             audit_service.log(
-                db, actor, role, "CREATE_CHALLENGE", "challenge", chlg.id, f"Event {event_type} rescore"
+                db,
+                actor,
+                role,
+                "CREATE_CHALLENGE",
+                "challenge",
+                chlg.id,
+                f"Event {event_type} rescore",
             )
         elif scored.verdict == "ESCALATE":
             session.status = "ESCALATED"

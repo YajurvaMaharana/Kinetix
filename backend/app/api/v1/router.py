@@ -294,7 +294,11 @@ async def get_session_timeline(session_id: str, db: Session = Depends(get_db)):
                 timestamp=a.created_at.isoformat(),
                 type="ASSESSMENT_COMPLETED",
                 summary=f"Risk evaluated: {a.risk_score} -> Verdict: {a.verdict}",
-                details={"verdict": a.verdict, "risk_tier": a.risk_tier, "latency_ms": a.latency_ms},
+                details={
+                    "verdict": a.verdict,
+                    "risk_tier": a.risk_tier,
+                    "latency_ms": a.latency_ms,
+                },
             )
         )
 
@@ -428,9 +432,7 @@ async def list_riders(db: Session = Depends(get_db), role: str = Depends(get_rol
 
 
 @api_router.get("/riders/{rider_id}", response_model=RiderResponse, tags=["Riders"])
-async def get_rider(
-    rider_id: str, db: Session = Depends(get_db), role: str = Depends(get_role)
-):
+async def get_rider(rider_id: str, db: Session = Depends(get_db), role: str = Depends(get_role)):
     """
     Gets rider details. Applies privacy masking when role=analyst.
     """
@@ -457,9 +459,7 @@ async def get_rider(
     )
 
 
-@api_router.get(
-    "/riders/{rider_id}/timeline", response_model=TimelineResponse, tags=["Riders"]
-)
+@api_router.get("/riders/{rider_id}/timeline", response_model=TimelineResponse, tags=["Riders"])
 async def get_rider_timeline(rider_id: str, db: Session = Depends(get_db)):
     """
     Historical timeline for a rider across sessions and case disputes.
@@ -553,9 +553,7 @@ async def get_device_passport(device_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Device '{device_id}' not found"
         )
 
-    associated_count = (
-        db.query(DeviceRider).filter(DeviceRider.device_id == device.id).count()
-    )
+    associated_count = db.query(DeviceRider).filter(DeviceRider.device_id == device.id).count()
 
     return DevicePassportResponse(
         device_id=device.id,
@@ -573,9 +571,7 @@ async def get_device_passport(device_id: str, db: Session = Depends(get_db)):
 # 5. Cases & Analyst Workflows
 # ==============================================================================
 @api_router.get("/cases", response_model=List[CaseResponse], tags=["Cases"])
-async def list_cases(
-    status_filter: Optional[str] = None, db: Session = Depends(get_db)
-):
+async def list_cases(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
     """
     Lists cases with optional status filter.
     """

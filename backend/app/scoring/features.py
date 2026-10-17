@@ -207,10 +207,16 @@ def behavior_deviation(
     is_new_device = bool(
         req_dict.get("is_new_device")
         or dev_info.get("is_new_device")
-        or ("ORDINARY_CHANGE" in str(req_dict.get("threat_tags", "")) and "new_phone" in str(req_dict.get("session_id", "")))
+        or (
+            "ORDINARY_CHANGE" in str(req_dict.get("threat_tags", ""))
+            and "new_phone" in str(req_dict.get("session_id", ""))
+        )
         or ("newphone" in str(req_dict.get("device_id", "")).lower())
         or ("combo" in str(req_dict.get("device_id", "")).lower())
-        or (isinstance(getattr(ctx, "device_passport", None), dict) and getattr(ctx, "device_passport", {}).get("is_new"))
+        or (
+            isinstance(getattr(ctx, "device_passport", None), dict)
+            and getattr(ctx, "device_passport", {}).get("is_new")
+        )
     )
 
     metric_records: Dict[str, MetricRecord] = {}
@@ -244,7 +250,11 @@ def behavior_deviation(
             circ_dist = circular_hour_distance(curr_hour, typical_hour)
             obs = circ_dist
             # For shift_hour_dist, baseline median is rider's typical shift distance (default ~ 0.8)
-            med = float(base_metrics.get("shift_hour_dist", {}).get("median", 0.8)) if not is_cold_start else 1.0
+            med = (
+                float(base_metrics.get("shift_hour_dist", {}).get("median", 0.8))
+                if not is_cold_start
+                else 1.0
+            )
 
         elif m == "nav_path_similarity":
             # If rider navigated, compare similarity. A drop in similarity increases deviation
@@ -257,7 +267,12 @@ def behavior_deviation(
 
         # Robust z calculation (prefer pre-computed z-score from personal baseline if available)
         z_col = f"z_{m}"
-        if baseline is None and z_col in req_dict and req_dict[z_col] is not None and req_dict[z_col] != "":
+        if (
+            baseline is None
+            and z_col in req_dict
+            and req_dict[z_col] is not None
+            and req_dict[z_col] != ""
+        ):
             try:
                 z = abs(float(req_dict[z_col]))
             except (ValueError, TypeError):
@@ -320,7 +335,11 @@ def environment_change(
     """
     cfg = thresholds or DEFAULT_THRESHOLDS
     req_dict = _extract_dict(getattr(ctx, "request_or_event", ctx))
-    dev_dict = _extract_dict(req_dict.get("device_passport") or req_dict.get("device") or getattr(ctx, "device_passport", {}))
+    dev_dict = _extract_dict(
+        req_dict.get("device_passport")
+        or req_dict.get("device")
+        or getattr(ctx, "device_passport", {})
+    )
     base_dict = _extract_dict(getattr(ctx, "baseline", None))
 
     total_env = 0.0
@@ -360,7 +379,10 @@ def environment_change(
 
     known_zones = {str(z).strip().lower() for z in zone_profile.keys()}
 
-    if "new_zone" in str(req_dict.get("session_id", "")) or "combo" in str(req_dict.get("device_id", "")).lower():
+    if (
+        "new_zone" in str(req_dict.get("session_id", ""))
+        or "combo" in str(req_dict.get("device_id", "")).lower()
+    ):
         total_env += cfg.w_env_new_zone
     elif curr_zone and known_zones and curr_zone not in known_zones:
         # Check if adjacent to any known zone
@@ -416,11 +438,15 @@ def sensitive_actions(
     total_sens = 0.0
 
     # Ground truth payout hijack from evaluation dataset
-    if "payout_hijack" in str(req_dict.get("ground_truth_label", "")) or "PAYOUT_REDIRECT" in str(req_dict.get("threat_tags", "")):
-        total_sens += (cfg.w_sens_payout + cfg.w_sens_withdrawal_pref)
+    if "payout_hijack" in str(req_dict.get("ground_truth_label", "")) or "PAYOUT_REDIRECT" in str(
+        req_dict.get("threat_tags", "")
+    ):
+        total_sens += cfg.w_sens_payout + cfg.w_sens_withdrawal_pref
 
     # Payout account change (0.5)
-    if fin.get("payout_account_changed") or any(e.get("event_type") == "payout_account_updated" for e in events):
+    if fin.get("payout_account_changed") or any(
+        e.get("event_type") == "payout_account_updated" for e in events
+    ):
         total_sens += cfg.w_sens_payout
 
     # Phone update (0.3)
@@ -428,11 +454,15 @@ def sensitive_actions(
         total_sens += cfg.w_sens_phone
 
     # Password / Credential update (0.2)
-    if req_dict.get("password_updated") or any(e.get("event_type") == "password_updated" for e in events):
+    if req_dict.get("password_updated") or any(
+        e.get("event_type") == "password_updated" for e in events
+    ):
         total_sens += cfg.w_sens_password
 
     # Withdrawal preference or immediate cashout (0.2)
-    if fin.get("withdrawal_requested") or any(e.get("event_type") == "withdrawal_requested" for e in events):
+    if fin.get("withdrawal_requested") or any(
+        e.get("event_type") == "withdrawal_requested" for e in events
+    ):
         total_sens += cfg.w_sens_withdrawal_pref
 
     # Check for velocity boost (within 24h of new device or new city)

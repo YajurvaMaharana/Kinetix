@@ -83,14 +83,49 @@ SCREENS = [
 ]
 
 FIRST_NAMES = [
-    "Aarav", "Rohan", "Vikram", "Aditya", "Rahul", "Pooja", "Ananya", "Sneha",
-    "Amit", "Priya", "Karan", "Suresh", "Sunil", "Deepak", "Manish", "Rajesh",
-    "Naveen", "Gaurav", "Neha", "Divya", "Sanjay", "Anil", "Meera", "Swati",
+    "Aarav",
+    "Rohan",
+    "Vikram",
+    "Aditya",
+    "Rahul",
+    "Pooja",
+    "Ananya",
+    "Sneha",
+    "Amit",
+    "Priya",
+    "Karan",
+    "Suresh",
+    "Sunil",
+    "Deepak",
+    "Manish",
+    "Rajesh",
+    "Naveen",
+    "Gaurav",
+    "Neha",
+    "Divya",
+    "Sanjay",
+    "Anil",
+    "Meera",
+    "Swati",
 ]
 
 LAST_NAMES = [
-    "Sharma", "Patel", "Verma", "Kulkarni", "Deshmukh", "Reddy", "Nair", "Rao",
-    "Gupta", "Singh", "Joshi", "Chavan", "Mehta", "Iyer", "Yadav", "Kumar",
+    "Sharma",
+    "Patel",
+    "Verma",
+    "Kulkarni",
+    "Deshmukh",
+    "Reddy",
+    "Nair",
+    "Rao",
+    "Gupta",
+    "Singh",
+    "Joshi",
+    "Chavan",
+    "Mehta",
+    "Iyer",
+    "Yadav",
+    "Kumar",
 ]
 
 
@@ -182,7 +217,9 @@ def generate_persona(rider_idx: int, rng: np.random.RandomState) -> RiderPersona
     face_id = f"face_{rider_id}"
 
     # Payout Account
-    bank_name = rng.choice(["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank", "Kotak Bank"])
+    bank_name = rng.choice(
+        ["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank", "Kotak Bank"]
+    )
     raw_acc = f"9876543{rider_idx:05d}{rng.randint(100, 999)}"
     raw_routing = f"IFSC{bank_name[:4].upper()}{rng.randint(1000, 9999)}"
     payout_account = {

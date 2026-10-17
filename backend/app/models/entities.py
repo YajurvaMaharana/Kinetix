@@ -47,7 +47,9 @@ class FaceTemplate(Base):
     __tablename__ = "face_templates"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     template_version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
     embedding_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     encrypted_embedding: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -68,15 +70,21 @@ class Device(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
-    device_riders: Mapped[List["DeviceRider"]] = relationship("DeviceRider", back_populates="device")
+    device_riders: Mapped[List["DeviceRider"]] = relationship(
+        "DeviceRider", back_populates="device"
+    )
 
 
 class DeviceRider(Base):
     __tablename__ = "device_riders"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("devices.id"), nullable=False, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("devices.id"), nullable=False, index=True
+    )
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     first_used_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
@@ -89,7 +97,9 @@ class RiderBaseline(Base):
     __tablename__ = "rider_baselines"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), unique=True, nullable=False)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), unique=True, nullable=False
+    )
     avg_speed_kmh: Mapped[float] = mapped_column(Float, default=35.0, nullable=False)
     avg_cadence_cpm: Mapped[float] = mapped_column(Float, default=220.0, nullable=False)
     home_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -106,9 +116,13 @@ class Session(Base):
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     driver_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
-    device_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("devices.id"), nullable=True)
+    device_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("devices.id"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(32), default="IN_PROGRESS", nullable=False)
     ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
     current_risk_score: Mapped[float] = mapped_column(Float, default=10.0, nullable=False)
@@ -132,7 +146,9 @@ class SessionEvent(Base):
     __tablename__ = "session_events"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("sessions.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("sessions.id"), nullable=False, index=True
+    )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
@@ -144,7 +160,9 @@ class BehaviorSnapshot(Base):
     __tablename__ = "behavior_snapshots"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("sessions.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("sessions.id"), nullable=False, index=True
+    )
     speed_kmh: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     acceleration_variance: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     gyro_stability: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
@@ -157,13 +175,17 @@ class RiskAssessment(Base):
     __tablename__ = "risk_assessments"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("sessions.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("sessions.id"), nullable=False, index=True
+    )
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
     raw_risk: Mapped[float] = mapped_column(Float, nullable=False)
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_tier: Mapped[str] = mapped_column(String(32), nullable=False)
     latency_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    model_version: Mapped[str] = mapped_column(String(64), default="v2.0.0-rf-heuristic", nullable=False)
+    model_version: Mapped[str] = mapped_column(
+        String(64), default="v2.0.0-rf-heuristic", nullable=False
+    )
     policy_version: Mapped[str] = mapped_column(String(64), default="v2.4.0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
@@ -192,7 +214,9 @@ class Challenge(Base):
     __tablename__ = "challenges"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("sessions.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("sessions.id"), nullable=False, index=True
+    )
     challenge_type: Mapped[str] = mapped_column(String(64), default="FACE_LIVENESS", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -249,7 +273,9 @@ class PayoutAccount(Base):
     __tablename__ = "payout_accounts"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     account_number_token: Mapped[str] = mapped_column(String(64), nullable=False)
     routing_token: Mapped[str] = mapped_column(String(64), nullable=False)
     account_type: Mapped[str] = mapped_column(String(32), default="checking", nullable=False)
@@ -264,7 +290,9 @@ class PayoutRequest(Base):
     payout_account_id: Mapped[Optional[str]] = mapped_column(
         String(64), ForeignKey("payout_accounts.id"), nullable=True
     )
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="RELEASED", nullable=False)
@@ -279,7 +307,9 @@ class Case(Base):
     session_id: Mapped[Optional[str]] = mapped_column(
         String(64), ForeignKey("sessions.id"), nullable=True, index=True
     )
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     severity: Mapped[str] = mapped_column(String(32), default="MEDIUM", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="OPEN", nullable=False)
     assigned_to: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -297,7 +327,9 @@ class ReviewerAction(Base):
     __tablename__ = "reviewer_actions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    case_id: Mapped[str] = mapped_column(String(64), ForeignKey("cases.id"), nullable=False, index=True)
+    case_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("cases.id"), nullable=False, index=True
+    )
     reviewer_id: Mapped[str] = mapped_column(String(64), nullable=False)
     action_type: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -323,7 +355,9 @@ class RiderTrustScore(Base):
     __tablename__ = "rider_trust_scores"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), unique=True, nullable=False)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), unique=True, nullable=False
+    )
     trust_score: Mapped[float] = mapped_column(Float, default=90.0, nullable=False)
     trend: Mapped[str] = mapped_column(String(32), default="STABLE", nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.9, nullable=False)
@@ -336,7 +370,9 @@ class RiderTrustHistory(Base):
     __tablename__ = "rider_trust_history"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     trust_score: Mapped[float] = mapped_column(Float, nullable=False)
     delta: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -347,8 +383,12 @@ class Appeal(Base):
     __tablename__ = "appeals"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
-    case_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("cases.id"), nullable=True)
-    rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
+    case_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("cases.id"), nullable=True
+    )
+    rider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=False, index=True
+    )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

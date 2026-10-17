@@ -30,6 +30,7 @@ class RuleHit:
         baseline: Established historical threshold or expectation
         explanation: Human and audit explanation of the rule hit
     """
+
     code: str
     points: float
     floor: float
@@ -172,7 +173,9 @@ def check_impossible_travel(
     cfg: ThresholdConfig,
 ) -> Optional[RuleHit]:
     """Flagged when displacement speed between consecutive pings exceeds 800 km/h."""
-    speed_jump = _float_val(telem.get("speed_between_pings_kmh") or req_dict.get("speed_between_pings_kmh"), 0.0)
+    speed_jump = _float_val(
+        telem.get("speed_between_pings_kmh") or req_dict.get("speed_between_pings_kmh"), 0.0
+    )
     is_imp = bool(
         _bool_val(req_dict.get("impossible_travel"))
         or _bool_val(telem.get("impossible_travel_detected"))
@@ -207,14 +210,14 @@ def check_gps_spoofing(
         or _bool_val(loc.get("mock_location_detected"))
         or _bool_val(dev_dict.get("mock_location_detected"))
     )
-    straightness = _float_val(telem.get("straightness_ratio") or req_dict.get("straightness_ratio"), 0.0)
+    straightness = _float_val(
+        telem.get("straightness_ratio") or req_dict.get("straightness_ratio"), 0.0
+    )
     speed_var = _float_val(telem.get("speed_variance") or req_dict.get("speed_variance"), 99.0)
 
     is_synth_path = straightness >= 0.995 and speed_var <= 0.05
     is_spoof = bool(
-        mock_flag
-        or is_synth_path
-        or ("GPS_SPOOFING" in str(req_dict.get("threat_tags", "")))
+        mock_flag or is_synth_path or ("GPS_SPOOFING" in str(req_dict.get("threat_tags", "")))
     )
     if is_spoof:
         if mock_flag:
@@ -245,7 +248,9 @@ def check_concurrent_session(
         or ("CONCURRENT_SESSION" in str(req_dict.get("threat_tags", "")))
     )
     if is_conc:
-        dist = _float_val(telem.get("concurrent_distance_km") or req_dict.get("concurrent_distance_km"), 50.0)
+        dist = _float_val(
+            telem.get("concurrent_distance_km") or req_dict.get("concurrent_distance_km"), 50.0
+        )
         return RuleHit(
             code="CONCURRENT_SESSION",
             points=cfg.rule_concurrent_session_points,
@@ -298,7 +303,11 @@ def check_liveness_failed(
     declined = bool(
         _bool_val(telem.get("challenge_declined"))
         or _bool_val(req_dict.get("challenge_declined"))
-        or any(_bool_val(e.get("payload", {}).get("challenge_declined")) for e in events if isinstance(e, dict))
+        or any(
+            _bool_val(e.get("payload", {}).get("challenge_declined"))
+            for e in events
+            if isinstance(e, dict)
+        )
     )
 
     liveness_f = _float_val(liveness, 1.0) if (liveness is not None and liveness != "") else None
@@ -323,8 +332,12 @@ def check_multi_account_device_ring(
     cfg: ThresholdConfig,
 ) -> Optional[RuleHit]:
     """Flagged when a hardware device is shared by 3+ accounts or exhibits emulator farm attributes."""
-    shared_dev_cnt = _int_val(telem.get("shared_device_count") or req_dict.get("shared_device_count"), 1)
-    shared_pay_cnt = _int_val(telem.get("shared_payout_count") or req_dict.get("shared_payout_count"), 1)
+    shared_dev_cnt = _int_val(
+        telem.get("shared_device_count") or req_dict.get("shared_device_count"), 1
+    )
+    shared_pay_cnt = _int_val(
+        telem.get("shared_payout_count") or req_dict.get("shared_payout_count"), 1
+    )
     is_emu = _bool_val(dev_dict.get("is_emulator")) or _bool_val(req_dict.get("is_emulator"))
 
     is_ring = bool(

@@ -1,12 +1,5 @@
 """TrustJuggler Scoring Package.
-All risk scoring, machine learning, and heuristic evaluation MUST reside exclusively in this package.
-"""
-<<<<<<< Updated upstream
-from app.scoring.risk import ScoringContext, score_session
 
-__all__ = ["ScoringContext", "score_session"]
-=======
-TrustJuggler Scoring Package.
 Exposes real-time multi-modal risk scoring, feature extractors, anomaly detection,
 rule hooks, explainability decomposition, and threshold configurations.
 """
@@ -40,6 +33,7 @@ from app.scoring.features import (
 from app.scoring.risk import (
     Assessment,
     ScoredAssessment,
+    ScoreResult,
     ScoringContext,
     extract_device_risk,
     extract_graph_risk,
@@ -60,6 +54,7 @@ __all__ = [
     "score_session",
     "ScoredAssessment",
     "Assessment",
+    "ScoreResult",
     "ThresholdConfig",
     "DEFAULT_THRESHOLDS",
     "robust_z",
@@ -91,4 +86,3 @@ __all__ = [
     "extract_graph_risk",
     "extract_trust_health",
 ]
->>>>>>> Stashed changes

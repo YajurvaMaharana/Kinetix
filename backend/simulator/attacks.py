@@ -108,13 +108,15 @@ def make_gps_spoof(
     spoofed_points = []
     # 10 collinear points with exactly 0.0 speed variance
     for step in range(8):
-        spoofed_points.append({
-            "step": step,
-            "latitude": round(start_lat + (step * 0.005), 6),
-            "longitude": round(start_lng + (step * 0.005), 6),
-            "speed_kmh": fixed_speed,
-            "mock_location": True,
-        })
+        spoofed_points.append(
+            {
+                "step": step,
+                "latitude": round(start_lat + (step * 0.005), 6),
+                "longitude": round(start_lng + (step * 0.005), 6),
+                "speed_kmh": fixed_speed,
+                "mock_location": True,
+            }
+        )
 
     sess["telemetry"]["mock_location_detected"] = True
     sess["telemetry"]["speed_variance"] = 0.01  # extremely low
@@ -126,11 +128,13 @@ def make_gps_spoof(
     # Overwrite location events
     sess["events"] = [e for e in sess["events"] if e["event_type"] != "location_ping"]
     for p in spoofed_points:
-        sess["events"].append({
-            "event_type": "location_ping",
-            "payload": p,
-            "created_at": (now + timedelta(minutes=p["step"] * 2)).isoformat(),
-        })
+        sess["events"].append(
+            {
+                "event_type": "location_ping",
+                "payload": p,
+                "created_at": (now + timedelta(minutes=p["step"] * 2)).isoformat(),
+            }
+        )
 
     return sess
 
@@ -187,16 +191,20 @@ def make_impossible_travel(
     sess["telemetry"]["speed_between_pings_kmh"] = 6900.0
     sess["threat_tags"] = ["IMPOSSIBLE_TRAVEL"]
 
-    sess["events"].append({
-        "event_type": "location_ping",
-        "payload": ping1,
-        "created_at": now.isoformat(),
-    })
-    sess["events"].append({
-        "event_type": "location_ping",
-        "payload": ping2,
-        "created_at": (now + timedelta(minutes=10)).isoformat(),
-    })
+    sess["events"].append(
+        {
+            "event_type": "location_ping",
+            "payload": ping1,
+            "created_at": now.isoformat(),
+        }
+    )
+    sess["events"].append(
+        {
+            "event_type": "location_ping",
+            "payload": ping2,
+            "created_at": (now + timedelta(minutes=10)).isoformat(),
+        }
+    )
 
     return sess
 
@@ -308,21 +316,25 @@ def make_payout_hijack(
         "withdrawal_time_delta_sec": 45,
     }
 
-    sess["events"].append({
-        "event_type": "payout_account_updated",
-        "payload": {
-            "new_account_token": new_payout_token,
-            "channel": "API_AUTOMATED",
-        },
-        "created_at": now.isoformat(),
-    })
-    sess["events"].append({
-        "event_type": "withdrawal_requested",
-        "payload": {
-            "amount": 18500.0,
-            "currency": "INR",
-        },
-        "created_at": (now + timedelta(seconds=45)).isoformat(),
-    })
+    sess["events"].append(
+        {
+            "event_type": "payout_account_updated",
+            "payload": {
+                "new_account_token": new_payout_token,
+                "channel": "API_AUTOMATED",
+            },
+            "created_at": now.isoformat(),
+        }
+    )
+    sess["events"].append(
+        {
+            "event_type": "withdrawal_requested",
+            "payload": {
+                "amount": 18500.0,
+                "currency": "INR",
+            },
+            "created_at": (now + timedelta(seconds=45)).isoformat(),
+        }
+    )
 
     return sess
