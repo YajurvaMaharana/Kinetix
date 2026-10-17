@@ -378,6 +378,7 @@ async def get_challenge(challenge_id: str, db: Session = Depends(get_db)):
     if not ch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Challenge '{challenge_id}' not found"
+        )
     stepup_service.lazy_check_expiry(ch, db)
     db.commit()
 

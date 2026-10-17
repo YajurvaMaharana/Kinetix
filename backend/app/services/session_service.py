@@ -634,7 +634,6 @@ class SessionService:
                             description=supp_factor.description,
                         )
                     )
->>>>>>> 521b8ea (feat(stepup): implement stepup service, challenge ladder, cooldowns, and scenario S1)
 
         elif scored.verdict == "ESCALATE":
             session.status = "ESCALATED"
