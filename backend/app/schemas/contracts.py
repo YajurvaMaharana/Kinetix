@@ -13,6 +13,7 @@ class FactorSchema(BaseModel):
     weight: float
     score: float
     description: str
+    code: Optional[str] = None
 
 
 class ChallengeSchema(BaseModel):
@@ -247,3 +248,24 @@ class MetricsSummaryResponse(BaseModel):
     decision_counts: Dict[str, int] = Field(default_factory=dict)
     classification_counts: Dict[str, int] = Field(default_factory=dict)
     threat_tag_counts: Dict[str, int] = Field(default_factory=dict)
+
+
+# ------------------------------------------------------------------------------
+# Fraud Syndicate Graph Schemas (D3 format)
+# ------------------------------------------------------------------------------
+class GraphNodeSchema(BaseModel):
+    id: str
+    type: str
+    label: str
+
+
+class GraphEdgeSchema(BaseModel):
+    source: str
+    target: str
+    relationship: str
+
+
+class GraphResponse(BaseModel):
+    nodes: List[GraphNodeSchema] = Field(default_factory=list)
+    edges: List[GraphEdgeSchema] = Field(default_factory=list)
+

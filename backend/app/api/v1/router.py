@@ -37,6 +37,7 @@ from app.schemas.contracts import (
     DevicePassportResponse,
     DeviceResponse,
     FactorSchema,
+    GraphResponse,
     InvestigationPayload,
     MetricsSummaryResponse,
     RiderResponse,
@@ -774,6 +775,28 @@ async def get_case_investigation(case_id: str, db: Session = Depends(get_db)):
             detail=f"Case '{case_id}' has no associated session",
         )
     return session_service.get_investigation_payload(db, case.session_id)
+
+
+@api_router.get(
+    "/investigations/graph/{rider_id}",
+    response_model=GraphResponse,
+    tags=["Investigations"],
+)
+async def get_investigation_graph(
+    rider_id: str,
+    depth: int = 2,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Analyst endpoint support:
+    Exports subgraph nodes and edges in D3/JSON format for frontend visualization.
+    Format: { nodes: [{id, type, label}], edges: [{source, target, relationship}] }
+    """
+    from app.services.graph_service import graph_service
+
+    data = graph_service.export_d3_subgraph(rider_id, depth=depth, db=db)
+    return GraphResponse(**data)
 
 
 # ==============================================================================

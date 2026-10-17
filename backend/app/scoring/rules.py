@@ -69,6 +69,7 @@ def evaluate_rules(
     ctx: Any,
     thresholds: Optional[ThresholdConfig] = None,
     travel_eval: Optional[Any] = None,
+    graph_eval: Optional[Any] = None,
 ) -> RuleEvaluationResult:
     """
     Evaluates all deterministic security rules against session signals.
@@ -96,6 +97,11 @@ def evaluate_rules(
         from app.scoring.travel import evaluate_travel
 
         travel_eval = evaluate_travel(ctx, cfg)
+
+    if graph_eval is None and hasattr(ctx, "request_or_event"):
+        from app.services.graph_service import evaluate_graph
+
+        graph_eval = evaluate_graph(ctx, cfg)
 
     hits: List[RuleHit] = []
 
@@ -125,7 +131,9 @@ def evaluate_rules(
         hits.append(hit_live)
 
     # 6. MULTI_ACCOUNT_DEVICE_RING (+15, floor 60)
-    hit_ring = check_multi_account_device_ring(req_dict, dev_dict, telem, cfg)
+    hit_ring = check_multi_account_device_ring(
+        req_dict, dev_dict, telem, cfg, graph_eval=graph_eval
+    )
     if hit_ring:
         hits.append(hit_ring)
 
@@ -371,6 +379,7 @@ def check_multi_account_device_ring(
     dev_dict: Dict[str, Any],
     telem: Dict[str, Any],
     cfg: ThresholdConfig,
+    graph_eval: Optional[Any] = None,
 ) -> Optional[RuleHit]:
     """Flagged when a hardware device is shared by 3+ accounts or exhibits emulator farm attributes."""
     shared_dev_cnt = _int_val(
@@ -381,9 +390,24 @@ def check_multi_account_device_ring(
     )
     is_emu = _bool_val(dev_dict.get("is_emulator")) or _bool_val(req_dict.get("is_emulator"))
 
+    if graph_eval:
+        if getattr(graph_eval, "max_device_riders", 1) > shared_dev_cnt:
+            shared_dev_cnt = getattr(graph_eval, "max_device_riders", 1)
+        if getattr(graph_eval, "max_bank_riders", 1) > shared_pay_cnt:
+            shared_pay_cnt = getattr(graph_eval, "max_bank_riders", 1)
+
+    has_graph_ring = bool(
+        graph_eval
+        and (
+            getattr(graph_eval, "has_multi_account_device_ring", False)
+            or getattr(graph_eval, "has_fraud_ring", False)
+        )
+    )
+
     is_ring = bool(
         shared_dev_cnt >= 3
         or shared_pay_cnt >= 3
+        or has_graph_ring
         or (is_emu and (shared_dev_cnt >= 2 or telem.get("ring_id") or req_dict.get("ring_id")))
         or ("FRAUD_RING" in str(req_dict.get("threat_tags", "")))
     )

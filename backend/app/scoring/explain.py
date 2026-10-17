@@ -221,16 +221,40 @@ def generate_explanation(
 
     # 7. Graph Syndicate Risk (+12 * graph_risk)
     pts_graph = components.get("pts_graph_risk", 0.0)
-    if pts_graph > 0.0:
+    graph_factors = details.get("graph_factors") or []
+    if pts_graph > 0.0 or graph_factors:
+        g_risk = float(details.get("graph_risk", 0.0))
+        code_graph = (
+            "FRAUD_RING"
+            if g_risk >= 0.80
+            else ("SHARED_DEVICE_RING" if g_risk >= 0.40 else "GRAPH_RISK")
+        )
+        label_graph = (
+            "Fraud Syndicate Collusion Ring"
+            if g_risk >= 0.80
+            else (
+                "Shared Device Hardware Ring" if g_risk >= 0.40 else "Syndicate Cluster Proximity"
+            )
+        )
+        obs_graph = f"graph_risk={g_risk:.2f}"
+        exp_graph = "Graph intelligence detected proximity to known collusion clusters or recycled identifiers."
+
+        if graph_factors:
+            gf = graph_factors[0]
+            code_graph = getattr(gf, "code", code_graph)
+            label_graph = getattr(gf, "label", label_graph)
+            obs_graph = getattr(gf, "observed", obs_graph)
+            exp_graph = getattr(gf, "explanation", exp_graph)
+
         all_positive.append(
             ExplanationFactor(
-                code="GRAPH_RISK",
+                code=code_graph,
                 category="graph",
                 points=pts_graph,
-                label="Syndicate Cluster Proximity",
-                observed=f"graph_risk={details.get('graph_risk', 0.0):.2f}",
+                label=label_graph,
+                observed=obs_graph,
                 baseline="isolated rider entity",
-                explanation="Graph intelligence detected proximity to known collusion clusters or recycled identifiers.",
+                explanation=exp_graph,
             )
         )
 

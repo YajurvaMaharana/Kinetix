@@ -462,6 +462,17 @@ class SessionService:
             .count()
             > 0
         )
+        # Fraud Graph integration
+        from app.services.graph_service import graph_service
+
+        graph_service.add_session_entities(
+            rider_id=rider.id,
+            device_id=device.fingerprint
+            if (device and device.fingerprint)
+            else (device.id if device else None),
+            ip_address=session.ip_address if session else None,
+        )
+
         ctx = ScoringContext(
             request_or_event=merged_req,
             baseline=baseline,
