@@ -4,17 +4,21 @@ Provides endpoints to simulate candidate threshold overrides, evaluate historica
 versus fraud detection trade-offs, and generate empirical ROC/PR trade-off curves.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.deps import get_role
 from app.schemas.contracts import (
     PolicySimulateRequest,
     PolicySimulateResponse,
+    ScenarioInfoResponse,
+    ScenarioRunRequest,
+    ScenarioRunResponse,
     TradeOffPointSchema,
 )
 from simulator.policy_sim import simulate_policy
+from simulator.scenario_runner import list_scenarios, run_scenario
 
 simulator_router = APIRouter(tags=["Policy Simulator"])
 
@@ -93,3 +97,48 @@ def simulate_policy_endpoint(
         latency_p95_ms=metrics.latency_p95_ms,
         latency_p99_ms=metrics.latency_p99_ms,
     )
+
+
+@simulator_router.get(
+    "/simulator/scenarios",
+    response_model=List[ScenarioInfoResponse],
+    summary="List all scripted attack and benign evaluation scenarios",
+)
+def get_scenarios_endpoint(
+    role: str = Depends(get_role),
+) -> List[ScenarioInfoResponse]:
+    """
+    Returns the catalog of 10 scripted canonical attack profiles and benign life changes:
+    - N1: Normal rider baseline session
+    - O1-O4: Benign life changes (new device, relocation, new zone, combined)
+    - H1: Mid-shift account handoff / rental
+    - T1: Impossible travel velocity violation
+    - T2: GPS spoofing / mock location trajectory
+    - F1: Fraud collusion device farm ring
+    - P1: Payout instrument hijack
+    """
+    return list_scenarios()
+
+
+@simulator_router.post(
+    "/simulator/scenarios/run",
+    response_model=ScenarioRunResponse,
+    summary="Execute a named attack or benign evaluation scenario step-by-step",
+)
+def run_scenario_endpoint(
+    req: ScenarioRunRequest,
+    role: str = Depends(get_role),
+) -> ScenarioRunResponse:
+    """
+    Executes a scenario step-by-step against the multi-modal risk scoring engine.
+    Emits real-time scoring assessments to the event bus for live streaming.
+    """
+    try:
+        return run_scenario(
+            scenario_id=req.scenario_id,
+            emit_events=req.emit_events,
+            session_id_prefix=req.session_id_prefix,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+

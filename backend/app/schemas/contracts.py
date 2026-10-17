@@ -345,3 +345,54 @@ class PolicySimulateResponse(BaseModel):
     latency_p99_ms: Optional[float] = None
 
 
+# ------------------------------------------------------------------------------
+# Attack & Scenario Runner Schemas
+# ------------------------------------------------------------------------------
+class ScenarioRunRequest(BaseModel):
+    scenario_id: str
+    emit_events: bool = True
+    session_id_prefix: Optional[str] = None
+
+
+class ScenarioStepResponse(BaseModel):
+    step_number: int
+    event_name: str
+    session_id: str
+    risk_score: float
+    raw_risk: float
+    verdict: str
+    risk_tier: str
+    classification: str
+    recommended_action: str
+    threat_tags: List[str] = Field(default_factory=list)
+    factors: List[Dict[str, Any]] = Field(default_factory=list)
+    mitigating_factors: List[Dict[str, Any]] = Field(default_factory=list)
+    adaptation_progress: Optional[str] = None
+    passed: bool = True
+    notes: Optional[str] = None
+
+
+class ScenarioRunResponse(BaseModel):
+    scenario_id: str
+    name: str
+    category: str
+    passed: bool
+    initial_verdict: str
+    final_verdict: str
+    initial_risk_score: float
+    final_risk_score: float
+    threat_tags: List[str] = Field(default_factory=list)
+    steps: List[ScenarioStepResponse] = Field(default_factory=list)
+    summary: str
+
+
+class ScenarioInfoResponse(BaseModel):
+    scenario_id: str
+    name: str
+    description: str
+    category: str
+    expected_verdict: str
+    expected_threat_tags: List[str] = Field(default_factory=list)
+
+
+
