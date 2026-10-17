@@ -162,6 +162,98 @@ class ChallengeResponse(BaseModel):
 
 
 # ------------------------------------------------------------------------------
+# Face Verification & Liveness Schemas
+# ------------------------------------------------------------------------------
+class FaceEnrollRequest(BaseModel):
+    embedding: Optional[List[float]] = None
+    image_base64: Optional[str] = None
+    model_name: str = "simulated"
+    retention_days: int = 365
+    scenario: Optional[str] = None
+    scenario_flag: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class FaceEnrollResponse(BaseModel):
+    template_id: str
+    rider_id: str
+    model_name: str
+    template_version: str = "v2"
+    raw_image_stored: bool = False
+    embedding_hash: str
+    retention_until: Optional[str] = None
+    created_at: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class FaceVerifyRequest(BaseModel):
+    scenario: Optional[str] = None  # "genuine_face", "different_person", "static_photo", "replay_attack"
+    scenario_flag: Optional[str] = None
+    prompt_nonce: Optional[str] = None
+    image_base64: Optional[str] = None
+    embedding: Optional[List[float]] = None
+    spoof_type: Optional[str] = None
+    prompt_response: Optional[Dict[str, Any]] = None
+    proof_payload: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class FaceVerifyResponse(BaseModel):
+    challenge_id: str
+    session_id: str
+    rider_id: str
+    passed: bool
+    similarity: float
+    threshold: float = 0.70
+    liveness_score: float
+    liveness_passed: bool
+    spoof_type: Optional[str] = None
+    prompt_results: Optional[Dict[str, Any]] = None
+    new_verdict: str
+    device_trusted: bool
+    raw_image_stored: bool = False
+    message: str
+    fallback_available: bool = True
+    fallback_options: List[str] = Field(
+        default_factory=lambda: ["OTP", "document_check", "manual_review"]
+    )
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class LivenessPromptResponse(BaseModel):
+    challenge_id: str
+    prompt: str
+    nonce: str
+    expires_at: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ChallengeFallbackRequest(BaseModel):
+    fallback_type: str = "OTP"  # "OTP", "document_check", "manual_review"
+    otp_code: Optional[str] = None
+    document_data: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ChallengeFallbackResponse(BaseModel):
+    challenge_id: str
+    status: str
+    fallback_type: str
+    new_verdict: Optional[str] = None
+    case_id: Optional[str] = None
+    message: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+# ------------------------------------------------------------------------------
 # Rider Schemas
 # ------------------------------------------------------------------------------
 class RiderResponse(BaseModel):

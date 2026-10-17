@@ -1,4 +1,4 @@
-import { HealthStatus, Role, SessionRequest, Assessment, Case, Cluster, Payout, PolicySim } from "./types";
+import { HealthStatus, Role, SessionRequest, Assessment, Case, Cluster, Payout, PolicySim, FaceEnrollResponse, LivenessPrompt, FaceVerifyResponse, ChallengeFallbackResponse } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -123,6 +123,64 @@ export async function simulatePolicy(cutLines: Record<string, number>, role?: Ro
   return apiFetch<PolicySim>("/policies/simulate", {
     method: "POST",
     body: JSON.stringify(cutLines),
+    role,
+  });
+}
+
+/**
+ * Enrolls a rider face template (Fernet-encrypted vector, zero raw image storage).
+ */
+export async function enrollFace(
+  riderId: string,
+  payload: { image_base64?: string; scenario_flag?: string; embedding?: number[] } = {},
+  role?: Role
+): Promise<FaceEnrollResponse> {
+  return apiFetch<FaceEnrollResponse>(`/riders/${encodeURIComponent(riderId)}/face/enroll`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Generates an ephemeral cryptographic liveness prompt (blink, head turn, smile).
+ */
+export async function getLivenessPrompt(
+  challengeId: string,
+  role?: Role
+): Promise<LivenessPrompt> {
+  return apiFetch<LivenessPrompt>(`/challenges/${encodeURIComponent(challengeId)}/liveness-prompt`, {
+    method: "GET",
+    role,
+  });
+}
+
+/**
+ * Submits biometric verification (1:1 matching against enrolled template + liveness check).
+ */
+export async function verifyFace(
+  challengeId: string,
+  payload: { image_base64?: string; scenario_flag?: string; prompt_nonce?: string },
+  role?: Role
+): Promise<FaceVerifyResponse> {
+  return apiFetch<FaceVerifyResponse>(`/challenges/${encodeURIComponent(challengeId)}/face-verify`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Requests an alternate step-up challenge (e.g. OTP, document_check, manual_review).
+ */
+export async function fallbackChallenge(
+  challengeId: string,
+  payload: { fallback_type: "otp" | "document_check" | "manual_review"; reason?: string },
+  role?: Role
+): Promise<ChallengeFallbackResponse> {
+  return apiFetch<ChallengeFallbackResponse>(`/challenges/${encodeURIComponent(challengeId)}/fallback`, {
+    method: "POST",
+    body: JSON.stringify(payload),
     role,
   });
 }

@@ -52,9 +52,19 @@ class FaceTemplate(Base):
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
     template_version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
+    model_name: Mapped[str] = mapped_column(String(64), default="simulated", nullable=False)
     embedding_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     encrypted_embedding: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retention_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    @property
+    def template_encrypted(self) -> Optional[str]:
+        return self.encrypted_embedding
+
+    @template_encrypted.setter
+    def template_encrypted(self, val: Optional[str]) -> None:
+        self.encrypted_embedding = val
 
 
 class Device(Base):
@@ -73,6 +83,7 @@ class Device(Base):
     trust_level: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
     streak_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     trust_rating: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    trusted_via: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
@@ -264,6 +275,8 @@ class LivenessCheck(Base):
     liveness_score: Mapped[float] = mapped_column(Float, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    spoof_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    prompt_results: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     challenge: Mapped["Challenge"] = relationship("Challenge", back_populates="liveness_checks")

@@ -31,16 +31,23 @@ from app.schemas.contracts import (
     AuditLogResponse,
     CasePatchRequest,
     CaseResponse,
+    ChallengeFallbackRequest,
+    ChallengeFallbackResponse,
     ChallengeRespondRequest,
     ChallengeResponse,
     ChallengeSchema,
     DevicePassportResponse,
     DeviceRecentSession,
     DeviceResponse,
+    FaceEnrollRequest,
+    FaceEnrollResponse,
+    FaceVerifyRequest,
+    FaceVerifyResponse,
     FactorSchema,
     GraphResponse,
     InvestigationPayload,
     LinkedRiderInfo,
+    LivenessPromptResponse,
     MetricsSummaryResponse,
     RiderResponse,
     SessionCreateRequest,
@@ -51,6 +58,7 @@ from app.schemas.contracts import (
 )
 from app.services.audit_service import audit_service
 from app.services.events_bus import event_bus
+from app.services.face_service import face_service
 from app.services.privacy import mask_name, mask_phone
 from app.services.session_service import session_service
 
@@ -445,6 +453,117 @@ async def list_rider_challenges(rider_id: str, db: Session = Depends(get_db)):
         )
     db.commit()
     return results
+
+
+# ------------------------------------------------------------------------------
+# Face Verification & Liveness Endpoints
+# ------------------------------------------------------------------------------
+@api_router.post(
+    "/riders/{rider_id}/face/enroll",
+    response_model=FaceEnrollResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Face Verification"],
+)
+async def enroll_rider_face(
+    rider_id: str,
+    payload: FaceEnrollRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Enrolls a Fernet-encrypted facial biometric template for a rider.
+    Never persists raw images; embeds in memory and discards immediately.
+    """
+    actor = x_actor or role
+    return face_service.enroll(
+        db=db,
+        rider_id=rider_id,
+        embedding=payload.embedding,
+        image_base64=payload.image_base64,
+        model_name=payload.model_name,
+        retention_days=payload.retention_days,
+        actor=actor,
+        role=role,
+    )
+
+
+@api_router.get(
+    "/challenges/{challenge_id}/liveness-prompt",
+    response_model=LivenessPromptResponse,
+    tags=["Face Verification"],
+)
+async def get_liveness_prompt(challenge_id: str):
+    """
+    Generates a dynamic 3D liveness micro-action prompt (blink, smile, turn head)
+    with a short nonce.
+    """
+    return face_service.generate_liveness_prompt(challenge_id)
+
+
+@api_router.post(
+    "/challenges/{challenge_id}/face-verify",
+    response_model=FaceVerifyResponse,
+    tags=["Face Verification"],
+)
+async def verify_face_challenge(
+    challenge_id: str,
+    payload: FaceVerifyRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Executes strictly 1:1 facial biometric verification against enrolled template.
+    Evaluates 3D liveness, decrypts template, computes similarity against 0.70 threshold.
+    Restores session on pass; triggers rule floors & escalates to case on failure.
+    """
+    actor = x_actor or role
+    res = face_service.verify(
+        db=db,
+        challenge_id=challenge_id,
+        input_payload=payload,
+        actor=actor,
+        role=role,
+    )
+    event_bus.publish(
+        "face_verification_completed",
+        {
+            "challenge_id": challenge_id,
+            "session_id": res.session_id,
+            "passed": res.passed,
+            "verdict": res.new_verdict,
+            "device_trusted": res.device_trusted,
+        },
+    )
+    return res
+
+
+@api_router.post(
+    "/challenges/{challenge_id}/fallback",
+    response_model=ChallengeFallbackResponse,
+    tags=["Face Verification"],
+)
+async def fallback_face_challenge(
+    challenge_id: str,
+    payload: ChallengeFallbackRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Executes fallback options when face verification is unavailable or requested.
+    Supports OTP downgrade, simulated document check, or manual review escalation.
+    """
+    actor = x_actor or role
+    return face_service.fallback(
+        db=db,
+        challenge_id=challenge_id,
+        fallback_type=payload.fallback_type,
+        proof_data=payload.document_data or {"otp_code": payload.otp_code},
+        actor=actor,
+        role=role,
+    )
 
 
 # ==============================================================================

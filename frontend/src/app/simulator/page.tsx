@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sliders, Play, RotateCcw } from "lucide-react";
+import { Sliders, Play, RotateCcw, ScanFace } from "lucide-react";
 import { evaluateSession } from "@/lib/api";
 import { Assessment, SessionRequest } from "@/lib/types";
+import FaceLivenessModal from "@/components/FaceLivenessModal";
 
 export default function SimulatorPage() {
   const [speed, setSpeed] = useState<number>(45);
@@ -12,6 +13,7 @@ export default function SimulatorPage() {
   const [vpnDetected, setVpnDetected] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [result, setResult] = useState<Assessment | null>(null);
+  const [isFaceModalOpen, setIsFaceModalOpen] = useState<boolean>(false);
 
   const handleRunSimulation = async () => {
     setEvaluating(true);
@@ -192,7 +194,7 @@ export default function SimulatorPage() {
             </label>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
             <button
               onClick={handleRunSimulation}
               disabled={evaluating}
@@ -200,6 +202,15 @@ export default function SimulatorPage() {
             >
               <Play className="h-4 w-4 fill-current" />
               {evaluating ? "Evaluating Live..." : "Run Real-time Assessment"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsFaceModalOpen(true)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition-all"
+            >
+              <ScanFace className="h-4 w-4 text-cyan-400" />
+              Open Biometric Liveness Modal
             </button>
           </div>
         </div>
@@ -276,6 +287,28 @@ export default function SimulatorPage() {
                   ))}
                 </div>
               </div>
+              {result.challenge && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-950/20 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-300">
+                    <span className="flex items-center gap-1.5">
+                      <ScanFace className="h-4 w-4" /> Challenge Required: {result.challenge.challenge_type}
+                    </span>
+                    <span className="font-mono text-[10px] text-amber-400/80 bg-amber-900/40 px-2 py-0.5 rounded border border-amber-700/50">
+                      {result.challenge.challenge_id}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Risk tier step-up required due to biometric/behavioral anomaly. Complete 1:1 facial liveness verification to restore session.
+                  </p>
+                  <button
+                    onClick={() => setIsFaceModalOpen(true)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500/20 border border-amber-500/50 px-3.5 py-2 text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition-all shadow-sm"
+                  >
+                    <ScanFace className="h-4 w-4 text-amber-400" />
+                    Complete Face Liveness Challenge
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex h-48 flex-col items-center justify-center text-center text-slate-500">
@@ -285,6 +318,25 @@ export default function SimulatorPage() {
           )}
         </div>
       </div>
+
+      <FaceLivenessModal
+        isOpen={isFaceModalOpen}
+        onClose={() => setIsFaceModalOpen(false)}
+        challengeId={result?.challenge?.challenge_id || "chlg_demo_face_01"}
+        riderId={result?.rider_id || "rider_simulated_user"}
+        onVerified={(res) => {
+          if (result) {
+            setResult({
+              ...result,
+              verdict: (res.new_verdict === "ALLOW" || res.new_verdict === "CHALLENGE" || res.new_verdict === "INVESTIGATE" ? res.new_verdict : "ALLOW") as "ALLOW" | "CHALLENGE" | "INVESTIGATE",
+              trust_score: res.passed ? Math.min(100, result.trust_score + 15) : Math.max(10, result.trust_score - 40),
+              threat_tags: res.passed ? ["CLEAN"] : ["ACCOUNT_HANDOFF"],
+              challenge: res.passed ? null : result.challenge,
+            });
+          }
+        }}
+      />
     </div>
   );
 }
+

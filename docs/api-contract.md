@@ -337,6 +337,116 @@ Retrieves a single challenge with lazy expiry evaluation.
 
 ---
 
+### `POST /api/v1/riders/{rider_id}/face/enroll`
+Enrolls a Fernet-encrypted facial biometric template.
+- Raw images are embedded in memory and discarded immediately (`raw_image_stored: false`).
+- Vectors are stored encrypted using Fernet (`TJ_FERNET_KEY`).
+
+**Request Body**:
+```json
+{
+  "embedding": [0.052, -0.019, 0.088, "...128 dimensions..."],
+  "model_name": "simulated",
+  "retention_days": 365
+}
+```
+
+**Response `201 Created`**:
+```json
+{
+  "template_id": "tmpl_9a12c4",
+  "rider_id": "rider_us_south_6021",
+  "model_name": "simulated",
+  "template_version": "v2",
+  "raw_image_stored": false,
+  "embedding_hash": "a1b2c3d4e5f6...",
+  "retention_until": "2027-10-18T00:00:00Z",
+  "created_at": "2026-10-18T00:00:00Z"
+}
+```
+
+---
+
+### `GET /api/v1/challenges/{challenge_id}/liveness-prompt`
+Generates a dynamic 3D interactive liveness prompt (`blink`, `turn_head_left`, `turn_head_right`, `smile`) with a cryptographic nonce.
+
+**Response `200 OK`**:
+```json
+{
+  "challenge_id": "chlg_8f1b2c3d",
+  "prompt": "blink",
+  "nonce": "e3b0c442",
+  "expires_at": "2026-10-17T19:05:00Z"
+}
+```
+
+---
+
+### `POST /api/v1/challenges/{challenge_id}/face-verify`
+Executes strictly 1:1 biometric facial verification and 3D liveness against enrolled template.
+- **Threshold**: 0.70 cosine similarity.
+- **PASS**: Restores session to `ALLOW`, marks device trusted (`trusted_via: "selfie"`), awards +15 trust health points.
+- **FAIL**: Triggers `FACE_MISMATCH` or `LIVENESS_FAILED` rule floors (floor 75 -> `ESCALATE`), opens critical fraud case, restricts rider.
+- **Raw Images**: Never persisted to disk or database (`raw_image_stored: false`).
+
+**Request Body**:
+```json
+{
+  "scenario": "genuine_face",
+  "prompt_response": {
+    "action": "blink",
+    "nonce": "e3b0c442"
+  }
+}
+```
+
+**Response `200 OK` (Pass)**:
+```json
+{
+  "challenge_id": "chlg_8f1b2c3d",
+  "session_id": "sess_handoff_9003",
+  "rider_id": "rider_us_south_6021",
+  "passed": true,
+  "similarity": 0.88,
+  "threshold": 0.70,
+  "liveness_score": 0.95,
+  "liveness_passed": true,
+  "spoof_type": null,
+  "new_verdict": "ALLOW",
+  "device_trusted": true,
+  "raw_image_stored": false,
+  "message": "Face verification and liveness check passed. Device trusted and session restored.",
+  "fallback_available": true,
+  "fallback_options": ["OTP", "document_check", "manual_review"]
+}
+```
+
+---
+
+### `POST /api/v1/challenges/{challenge_id}/fallback`
+Provides graceful fallbacks when face check is unavailable or inconclusive.
+- **Options**: `OTP` (switches to SMS OTP), `document_check` (simulated government ID), `manual_review` (escalates to human investigator).
+
+**Request Body**:
+```json
+{
+  "fallback_type": "OTP"
+}
+```
+
+**Response `200 OK`**:
+```json
+{
+  "challenge_id": "chlg_8f1b2c3d",
+  "status": "PENDING",
+  "fallback_type": "OTP",
+  "new_verdict": "CHALLENGE",
+  "message": "Switched verification method to SMS OTP."
+}
+```
+
+---
+
 ## 4. Case Management (Analyst Workflow)
 
 ### `GET /api/v1/cases`

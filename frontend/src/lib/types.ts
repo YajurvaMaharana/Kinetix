@@ -183,3 +183,49 @@ export interface HealthStatus {
   model_version: string;
   policy_version: string;
 }
+
+export interface FaceEnrollResponse {
+  template_id: string;
+  rider_id: string;
+  model_name: string;
+  template_version: string;
+  raw_image_stored: boolean;
+  embedding_hash: string;
+  retention_until?: string | null;
+  created_at: string;
+}
+
+export interface LivenessPrompt {
+  challenge_id: string;
+  prompt: string;
+  nonce: string;
+  expires_at: string;
+}
+
+export interface FaceVerifyResponse {
+  challenge_id: string;
+  session_id: string;
+  rider_id: string;
+  passed: boolean;
+  similarity: number;
+  threshold: number;
+  liveness_score: number;
+  liveness_passed: boolean;
+  spoof_type?: string | null;
+  prompt_results?: Record<string, unknown> | null;
+  new_verdict: string;
+  device_trusted: boolean;
+  raw_image_stored: boolean;
+  message: string;
+  fallback_available: boolean;
+  fallback_options: string[];
+}
+
+export interface ChallengeFallbackResponse {
+  challenge_id: string;
+  status: string;
+  fallback_type: string;
+  new_verdict?: string | null;
+  case_id?: string | null;
+  message: string;
+}
