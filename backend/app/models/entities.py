@@ -315,10 +315,20 @@ class PayoutAccount(Base):
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
     account_number_token: Mapped[str] = mapped_column(String(64), nullable=False)
-    routing_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    routing_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     account_type: Mapped[str] = mapped_column(String(32), default="checking", nullable=False)
+    set_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    @property
+    def account_token(self) -> str:
+        return self.account_number_token
+
+    @account_token.setter
+    def account_token(self, val: str) -> None:
+        self.account_number_token = val
 
 
 class PayoutRequest(Base):
@@ -331,11 +341,27 @@ class PayoutRequest(Base):
     rider_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
+    session_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("sessions.id"), nullable=True, index=True
+    )
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="RELEASED", nullable=False)
+    risk_at_request: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     hold_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    release_requires: Mapped[Optional[str]] = mapped_column(String(128), default="none", nullable=True)
+    challenge_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    liveness_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    analyst_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    analyst_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    payout_account: Mapped[Optional["PayoutAccount"]] = relationship("PayoutAccount")
+    rider: Mapped["Rider"] = relationship("Rider")
 
 
 class Case(Base):

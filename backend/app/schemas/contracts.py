@@ -503,3 +503,51 @@ class ScenarioInfoResponse(BaseModel):
     category: str
     expected_verdict: str
     expected_threat_tags: List[str] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------------------------
+# Payout Protection Schemas
+# ------------------------------------------------------------------------------
+class PayoutRequestCreate(BaseModel):
+    rider_id: str
+    amount: float
+    currency: str = "USD"
+    destination_account_token: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PayoutResponse(BaseModel):
+    payout_id: str
+    rider_id: str
+    amount: float
+    currency: str = "USD"
+    status: str  # "APPROVED", "HELD", "BLOCKED", "RELEASED"
+    risk_at_request: float
+    reason: str
+    release_requires: str  # "none", "liveness_selfie", "analyst_approval", "liveness_selfie+analyst_approval"
+    destination_account_token: Optional[str] = None
+    challenge_id: Optional[str] = None
+    session_id: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PayoutActionRequest(BaseModel):
+    action: str  # "release" | "block"
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PayoutAccountUpdatePayload(BaseModel):
+    account_token: str
+    routing_token: Optional[str] = None
+    account_type: str = "checking"
+
+    model_config = ConfigDict(extra="ignore")
+

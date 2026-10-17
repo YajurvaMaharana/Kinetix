@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sliders, Play, RotateCcw, ScanFace } from "lucide-react";
+import { Sliders, Play, RotateCcw, ScanFace, ShieldAlert } from "lucide-react";
 import { evaluateSession } from "@/lib/api";
 import { Assessment, SessionRequest } from "@/lib/types";
 import FaceLivenessModal from "@/components/FaceLivenessModal";
@@ -11,6 +11,8 @@ export default function SimulatorPage() {
   const [faceConfidence, setFaceConfidence] = useState<number>(0.95);
   const [mockLocation, setMockLocation] = useState<boolean>(false);
   const [vpnDetected, setVpnDetected] = useState<boolean>(false);
+  const [payoutAccountChanged, setPayoutAccountChanged] = useState<boolean>(false);
+  const [withdrawalRequested, setWithdrawalRequested] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [result, setResult] = useState<Assessment | null>(null);
   const [isFaceModalOpen, setIsFaceModalOpen] = useState<boolean>(false);
@@ -60,6 +62,9 @@ export default function SimulatorPage() {
           payment_method: "apple_pay",
           tip_amount: 4.0,
           promo_applied: false,
+          payout_account_changed: payoutAccountChanged,
+          withdrawal_requested: withdrawalRequested,
+          withdrawal_amount: withdrawalRequested ? 250.0 : 0.0,
         },
       };
 
@@ -74,6 +79,7 @@ export default function SimulatorPage() {
         if (vpnDetected) score -= 15;
         if (faceConfidence < 0.6) score -= 35;
         if (speed > 120) score -= 30;
+        if (payoutAccountChanged) score -= 25;
         score = Math.max(5, Math.min(99, score));
 
         const verdict = score > 75 ? "ALLOW" : score > 40 ? "CHALLENGE" : "INVESTIGATE";
@@ -84,7 +90,13 @@ export default function SimulatorPage() {
           trust_score: score,
           verdict,
           risk_tier: score > 75 ? "LOW" : score > 40 ? "MEDIUM" : "HIGH",
-          threat_tags: mockLocation ? ["GEO_SPOOF"] : faceConfidence < 0.6 ? ["ACCOUNT_HANDOFF"] : ["CLEAN"],
+          threat_tags: mockLocation
+            ? ["GEO_SPOOF"]
+            : faceConfidence < 0.6
+            ? ["ACCOUNT_HANDOFF"]
+            : payoutAccountChanged
+            ? ["PAYOUT_RISK"]
+            : ["CLEAN"],
           factors: [
             {
               name: "Biometric Consistency",
@@ -111,6 +123,11 @@ export default function SimulatorPage() {
             expires_at: new Date(Date.now() + 300000).toISOString(),
             created_at: new Date().toISOString(),
           } : null,
+          payout_decision: (payoutAccountChanged || withdrawalRequested) ? {
+            status: "ESCROW_HOLD",
+            hold_reason: "Destination account updated within 24-hour protection window. Requires liveness selfie + analyst clearance.",
+            hold_period_hours: 24,
+          } : undefined,
           case_id: verdict === "INVESTIGATE" ? "case_sim_01" : null,
           evaluated_at: new Date().toISOString(),
         });
@@ -131,6 +148,38 @@ export default function SimulatorPage() {
           Inject real-time anomalies: adjust velocity, face confidence, and mock GPS providers.
         </p>
       </div>
+
+      {/* Held Payout Banner (Member C Requirement) */}
+      {(payoutAccountChanged || result?.payout_decision?.status === "ESCROW_HOLD" || (result?.threat_tags && result.threat_tags.includes("PAYOUT_RISK"))) && (
+        <div className="rounded-xl border border-amber-500/50 bg-amber-950/40 p-4 shadow-lg shadow-amber-950/30 text-amber-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-400 animate-pulse" />
+              <span className="font-bold text-sm text-white">
+                Payout Escrow Hold Active: 24-Hour Protection Window
+              </span>
+            </div>
+            <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/40">
+              STATUS: HELD
+            </span>
+          </div>
+          <p className="text-xs text-amber-200/90 leading-relaxed">
+            ⚠️ Disbursement of $250.00 is held under the 24-hour destination account modification window. Facial liveness re-verification and analyst clearance are required before funds release.
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-500/20">
+            <span className="text-[11px] font-mono text-amber-300/80">
+              Release Requires: <code className="text-amber-200">liveness_selfie + analyst_approval</code>
+            </span>
+            <button
+              onClick={() => setIsFaceModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/20 border border-amber-500/50 px-3 py-1 text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition-colors shadow-sm"
+            >
+              <ScanFace className="h-3.5 w-3.5 text-amber-400" />
+              Resolve with Facial Liveness
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Controls Card */}
@@ -191,6 +240,19 @@ export default function SimulatorPage() {
                 className="rounded border-slate-700 bg-slate-800 accent-indigo-600"
               />
               Simulate Datacenter VPN
+            </label>
+
+            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={payoutAccountChanged}
+                onChange={(e) => {
+                  setPayoutAccountChanged(e.target.checked);
+                  if (e.target.checked) setWithdrawalRequested(true);
+                }}
+                className="rounded border-slate-700 bg-slate-800 accent-amber-500"
+              />
+              Payout Account Modified (24h Window)
             </label>
           </div>
 

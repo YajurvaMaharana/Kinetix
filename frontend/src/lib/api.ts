@@ -117,6 +117,51 @@ export async function evaluatePayout(payload: Record<string, unknown>, role?: Ro
 }
 
 /**
+ * Lists payout disbursements with optional status filtering.
+ */
+export async function getPayouts(status?: string, role?: Role): Promise<Payout[]> {
+  const path = status ? `/payouts?status=${encodeURIComponent(status)}` : "/payouts";
+  return apiFetch<Payout[]>(path, { role });
+}
+
+/**
+ * Submits a new payout request evaluated against safety policies.
+ */
+export async function requestPayout(
+  payload: {
+    rider_id: string;
+    amount: number;
+    currency?: string;
+    destination_account_token?: string;
+    session_id?: string;
+  },
+  role?: Role
+): Promise<Payout> {
+  return apiFetch<Payout>("/payouts/request", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Analyst action to release or block a held payout.
+ */
+export async function patchPayout(
+  payoutId: string,
+  action: "release" | "block",
+  notes?: string,
+  role?: Role
+): Promise<Payout> {
+  return apiFetch<Payout>(`/payouts/${encodeURIComponent(payoutId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action, notes }),
+    role,
+  });
+}
+
+
+/**
  * Runs policy simulation across threshold cut-lines.
  */
 export async function simulatePolicy(cutLines: Record<string, number>, role?: Role): Promise<PolicySim> {

@@ -15,6 +15,7 @@ from app.services.graph_service import (
     evaluate_graph,
     graph_service,
 )
+from app.services.payout_service import PayoutService, payout_service
 
 __all__ = [
     "DeviceService",
@@ -31,4 +32,7 @@ __all__ = [
     "RealFaceVerifier",
     "LivenessChecker",
     "SimulatedLivenessChecker",
+    "PayoutService",
+    "payout_service",
 ]
+

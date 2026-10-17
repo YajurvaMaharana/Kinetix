@@ -68,6 +68,10 @@ export interface FinancialTelemetry {
   payment_method: string;
   tip_amount: number;
   promo_applied: boolean;
+  payout_account_changed?: boolean;
+  withdrawal_requested?: boolean;
+  withdrawal_amount?: number;
+  destination_account_token?: string;
 }
 
 export interface SessionRequest {
@@ -134,11 +138,18 @@ export interface Payout {
   driver_id?: string;
   amount: number;
   currency: string;
-  destination_account: string;
-  status: "RELEASED" | "ESCROW_HOLD" | "BLOCKED";
+  destination_account?: string;
+  destination_account_token?: string;
+  status: "APPROVED" | "HELD" | "BLOCKED" | "RELEASED" | "ESCROW_HOLD";
+  risk_at_request?: number;
+  reason?: string;
   hold_reason?: string | null;
+  release_requires?: string;
+  challenge_id?: string | null;
+  session_id?: string | null;
   hold_expires_at?: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface TrustScore {

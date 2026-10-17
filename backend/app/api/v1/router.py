@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,7 @@ from app.models.entities import (
     Challenge,
     Device,
     DeviceRider,
+    PayoutRequest,
     PolicyConfig,
     ReviewerAction,
     Rider,
@@ -49,6 +51,10 @@ from app.schemas.contracts import (
     LinkedRiderInfo,
     LivenessPromptResponse,
     MetricsSummaryResponse,
+    PayoutAccountUpdatePayload,
+    PayoutActionRequest,
+    PayoutRequestCreate,
+    PayoutResponse,
     RiderResponse,
     SessionCreateRequest,
     SessionEventRequest,
@@ -59,6 +65,7 @@ from app.schemas.contracts import (
 from app.services.audit_service import audit_service
 from app.services.events_bus import event_bus
 from app.services.face_service import face_service
+from app.services.payout_service import payout_service
 from app.services.privacy import mask_name, mask_phone
 from app.services.session_service import session_service
 
@@ -1287,6 +1294,184 @@ async def get_metrics_evaluation():
             continue
 
     return fallback_report
+
+
+# ==============================================================================
+# 7. Payout Protection & Escrow Gating
+# ==============================================================================
+@api_router.post(
+    "/payouts/request",
+    response_model=PayoutResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Payouts"],
+)
+def create_payout_request(
+    payload: PayoutRequestCreate,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Submits a withdrawal request evaluated against payout protection policies.
+    Returns status: APPROVED (risk < 45), HELD (risk 45-74, 24h window, high amount),
+    or BLOCKED (critical risk >= 75, open case, syndicate cluster).
+    """
+    actor = x_actor or role
+    res = payout_service.request_payout(
+        db=db, payload=payload, actor=actor, role=role
+    )
+    event_bus.publish(
+        "payout_requested",
+        {
+            "payout_id": res.payout_id,
+            "rider_id": res.rider_id,
+            "amount": res.amount,
+            "status": res.status,
+            "reason": res.reason,
+            "release_requires": res.release_requires,
+        },
+    )
+    return res
+
+
+@api_router.get(
+    "/payouts",
+    response_model=List[PayoutResponse],
+    tags=["Payouts"],
+)
+def list_payouts(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    rider_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Lists payout disbursements with status filters (APPROVED, HELD, BLOCKED, RELEASED).
+    """
+    query = db.query(PayoutRequest)
+    if status_filter:
+        query = query.filter(PayoutRequest.status == status_filter.upper())
+    if rider_id:
+        query = query.filter(PayoutRequest.rider_id == rider_id)
+
+    payouts = query.order_by(PayoutRequest.created_at.desc()).limit(limit).all()
+    results = []
+    for p in payouts:
+        dest_tok = p.payout_account.account_number_token if p.payout_account else None
+        results.append(
+            PayoutResponse(
+                payout_id=p.id,
+                rider_id=p.rider_id,
+                amount=p.amount,
+                currency=p.currency,
+                status=p.status,
+                risk_at_request=p.risk_at_request or 0.0,
+                reason=p.reason or p.hold_reason or "",
+                release_requires=p.release_requires or "none",
+                destination_account_token=dest_tok,
+                challenge_id=p.challenge_id,
+                session_id=p.session_id,
+                created_at=p.created_at.isoformat(),
+                updated_at=p.updated_at.isoformat() if p.updated_at else None,
+            )
+        )
+    return results
+
+
+@api_router.patch(
+    "/payouts/{payout_id}",
+    response_model=PayoutResponse,
+    tags=["Payouts"],
+)
+def update_payout_status(
+    payout_id: str,
+    payload: PayoutActionRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Analyst review action to release or block a held payout.
+    Enforces two-phase verification: payouts requiring liveness selfie must have
+    completed facial verification before release.
+    """
+    require_role(["analyst", "admin", "investigator", "finance"])(role)
+    actor = x_actor or role
+    res = payout_service.handle_payout_action(
+        db=db,
+        payout_id=payout_id,
+        action_req=payload,
+        actor=actor,
+        role=role,
+    )
+    event_bus.publish(
+        f"payout_{payload.action.lower()}ed",
+        {
+            "payout_id": payout_id,
+            "status": res.status,
+            "action": payload.action,
+            "actor": actor,
+        },
+    )
+    return res
+
+
+@api_router.post(
+    "/riders/{rider_id}/payout-account",
+    tags=["Payouts"],
+)
+def update_rider_payout_account(
+    rider_id: str,
+    payload: PayoutAccountUpdatePayload,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Updates or registers destination payout account for a rider.
+    Starts the 24-hour protection window where subsequent payouts are held.
+    """
+    actor = x_actor or role
+    acct = payout_service.set_payout_account(
+        db=db,
+        rider_id=rider_id,
+        account_token=payload.account_token,
+        routing_token=payload.routing_token,
+        account_type=payload.account_type,
+        actor=actor,
+        role=role,
+    )
+    return {
+        "status": "success",
+        "account_id": acct.id,
+        "rider_id": rider_id,
+        "account_token": acct.account_number_token,
+        "protection_window_active": True,
+        "protection_window_expires_at": (acct.set_at + timedelta(hours=24)).isoformat(),
+    }
+
+
+@api_router.post(
+    "/payouts/evaluate",
+    tags=["Payouts"],
+)
+def evaluate_payout_preview(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Interactive simulation helper to preview payout safety decisions.
+    """
+    req = PayoutRequestCreate(
+        rider_id=str(payload.get("rider_id", "rider_default")),
+        amount=float(payload.get("amount", 50.0)),
+        currency=str(payload.get("currency", "USD")),
+        destination_account_token=payload.get("destination_account_token"),
+        session_id=payload.get("session_id"),
+    )
+    return payout_service.evaluate_payout(db=db, request=req)
 
 
 # ==============================================================================

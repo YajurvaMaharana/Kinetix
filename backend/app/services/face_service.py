@@ -710,6 +710,13 @@ class FaceService:
             new_verdict = "ALLOW"
             message = "Face verification and liveness check passed. Device trusted and session restored."
 
+            # Update / auto-release any HELD payouts awaiting liveness verification
+            try:
+                from app.services.payout_service import payout_service
+                payout_service.handle_liveness_verified(db, rider_id=rider_id, challenge_id=chlg.id, now=now)
+            except Exception:
+                pass
+
             audit_service.log(
                 db=db,
                 actor=actor,
