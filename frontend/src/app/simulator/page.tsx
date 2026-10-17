@@ -324,7 +324,11 @@ export default function SimulatorPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-mono font-bold text-[#56D9F5]">{preset.id}</span>
                   <span className={`rounded border px-1.5 py-0.5 text-[9px] font-mono font-bold ${preset.badgeColor}`}>
-                    {preset.expectedVerdict}
+                    {preset.expectedVerdict === "INVESTIGATE"
+                      ? "ESCALATE"
+                      : preset.expectedVerdict === "BLOCK"
+                      ? "ESCALATE"
+                      : preset.expectedVerdict}
                   </span>
                 </div>
                 <h3 className="mt-2 text-sm font-bold text-white">{preset.name}</h3>
@@ -498,7 +502,7 @@ export default function SimulatorPage() {
                     : "border-red-500/40 bg-red-500/10 text-red-400"
                 }`}
               >
-                VERDICT: {assessment.verdict}
+                VERDICT: {assessment.verdict === "INVESTIGATE" ? "ESCALATE (INVESTIGATE)" : assessment.verdict === "BLOCK" ? "ESCALATE (BLOCK)" : assessment.verdict}
               </span>
             )}
           </div>

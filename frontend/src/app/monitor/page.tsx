@@ -363,7 +363,7 @@ export default function LiveMonitorPage() {
                             : "border-[#34D399]/40 bg-[#34D399]/10 text-[#34D399]"
                         }`}
                       >
-                        {s.verdict}
+                        {s.verdict === "INVESTIGATE" || s.verdict === "BLOCK" ? "ESCALATE" : s.verdict}
                       </span>
                     </div>
                   </div>

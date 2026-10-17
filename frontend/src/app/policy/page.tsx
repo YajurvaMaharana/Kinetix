@@ -84,7 +84,7 @@ export default function PolicyPage() {
 
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-slate-300">INVESTIGATE Threshold (Queue to SOC Desk)</span>
+              <span className="text-slate-300">ESCALATE Threshold (Queue to SOC Investigation Desk)</span>
               <span className="text-[#FB7185] font-bold">&gt;= {investigateThreshold} pts</span>
             </div>
             <input

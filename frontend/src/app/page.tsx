@@ -17,11 +17,9 @@ import {
   MapPin,
   Clock,
   ChevronRight,
-  UserCheck,
-  Info,
 } from "lucide-react";
 import { HealthStatus, Role } from "@/lib/types";
-import { getHealth, getActiveRole, setActiveRole } from "@/lib/api";
+import { getHealth, getActiveRole } from "@/lib/api";
 
 interface SessionDeskItem {
   id: string;
@@ -46,7 +44,7 @@ const mockDeskSessions: SessionDeskItem[] = [
     avatar: "MV",
     riskScore: 89,
     anomalyVector: "Unregistered iPhone 15",
-    anomalyDetail: "Concurrent delivery ping 14km apart in 180s",
+    anomalyDetail: "Concurrent delivery ping 14km apart in 180s (Case #INV-8902)",
     mitigationSafeguard: "18-mo clean history; residential IP",
     status: "ESCALATED",
     statusColor: "border-[#FB7185]/40 bg-[#FB7185]/10 text-[#FB7185]",
@@ -74,7 +72,7 @@ const mockDeskSessions: SessionDeskItem[] = [
     avatar: "DK",
     riskScore: 94,
     anomalyVector: "Syndicate Farm Node #14",
-    anomalyDetail: "Shared IMEI & routing account with Cluster 409",
+    anomalyDetail: "Shared IMEI & routing account with Cluster 409 (Escrow Hold)",
     mitigationSafeguard: "No mitigating factors; auto-gated escrow",
     status: "ESCALATED",
     statusColor: "border-red-500/40 bg-red-500/10 text-red-400",
@@ -345,13 +343,6 @@ export default function SecurityOverviewPage() {
 
         {/* Live Controls & Health Ping */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Active Role Pill */}
-          <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-[#101521] px-3 py-1.5 text-xs">
-            <UserCheck className="h-3.5 w-3.5 text-[#A78BFA]" />
-            <span className="text-slate-400">Persona:</span>
-            <span className="font-mono font-bold text-[#A78BFA] uppercase">{activeRole}</span>
-          </div>
-
           {/* Backend Connection Indicator */}
           <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-[#101521] px-3 py-1.5 text-xs font-mono">
             {loadingHealth ? (
@@ -370,108 +361,11 @@ export default function SecurityOverviewPage() {
           <button
             onClick={fetchHealthStatus}
             disabled={loadingHealth}
-            className="flex items-center gap-1.5 rounded-lg border border-[#56D9F5]/30 bg-[#56D9F5]/10 px-3 py-1.5 text-xs font-semibold text-[#56D9F5] hover:bg-[#56D9F5]/20 transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg border border-[#56D9F5]/30 bg-[#56D9F5]/10 px-3 py-1.5 text-xs font-semibold text-[#56D9F5] hover:bg-[#56D9F5]/20 transition-all disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loadingHealth ? "animate-spin" : ""}`} />
             Pings
           </button>
-        </div>
-      </div>
-
-      {/* PERSONA & ROLE SIMULATION BANNER */}
-      <div
-        className={`rounded-xl border p-4 space-y-3 transition-colors ${
-          activeRole === "rider"
-            ? "border-amber-500/30 bg-amber-950/20"
-            : activeRole === "finance"
-            ? "border-emerald-500/30 bg-emerald-950/20"
-            : activeRole === "admin"
-            ? "border-purple-500/30 bg-purple-950/20"
-            : activeRole === "investigator"
-            ? "border-rose-500/30 bg-rose-950/20"
-            : activeRole === "system"
-            ? "border-sky-500/30 bg-sky-950/20"
-            : "border-[#56D9F5]/30 bg-[#56D9F5]/5"
-        }`}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div
-              className={`h-9 w-9 rounded-lg flex items-center justify-center font-bold text-sm ${
-                activeRole === "rider"
-                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                  : activeRole === "finance"
-                  ? "bg-emerald-500/20 text-[#34D399] border border-emerald-500/30"
-                  : activeRole === "admin"
-                  ? "bg-purple-500/20 text-[#A78BFA] border border-purple-500/30"
-                  : activeRole === "investigator"
-                  ? "bg-rose-500/20 text-[#FB7185] border border-rose-500/30"
-                  : activeRole === "system"
-                  ? "bg-sky-500/20 text-[#38BDF8] border border-sky-500/30"
-                  : "bg-[#56D9F5]/20 text-[#56D9F5] border border-[#56D9F5]/30"
-              }`}
-            >
-              <UserCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-white capitalize">{activeRole} Mode Active</span>
-                <span className="rounded font-mono px-2 py-0.5 text-[10px] uppercase font-bold border border-slate-700 bg-[#080B12] text-slate-300">
-                  {activeRole === "rider"
-                    ? "Masked Forensics (Courier Privacy)"
-                    : activeRole === "finance"
-                    ? "Escrow & Payout Control"
-                    : activeRole === "admin"
-                    ? "Full Policy & Rule Authority"
-                    : activeRole === "investigator"
-                    ? "Forensic Dossiers & Graphs"
-                    : activeRole === "system"
-                    ? "Low-Level Telemetry Daemon"
-                    : "Full SOC Triage Desk"}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {activeRole === "rider"
-                  ? "Rider & courier safe view: raw anomaly vectors, cluster names, and analyst triage buttons are masked for privacy."
-                  : activeRole === "finance"
-                  ? "Treasury & Escrow focus: automated holds, payout ledger clearance, and fraud loss prevention indicators."
-                  : activeRole === "admin"
-                  ? "Administrator privileges: scoring decision boundary cut-lines, policy matrix thresholds, and system governance."
-                  : activeRole === "investigator"
-                  ? "Investigator view: deep case dossiers, hardware attribution, IMEI clustering, and graph syndicates."
-                  : activeRole === "system"
-                  ? "System daemon view: raw socket latency, engine ping metrics, and microservice health diagnostics."
-                  : "SOC Analyst view: full access to manual case queue, biometric mismatch triage, and live investigation desk."}
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Persona Selector */}
-          <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
-            {(["analyst", "admin", "investigator", "finance", "rider", "system"] as Role[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => {
-                  setActiveRole(r);
-                  setActiveRoleState(r);
-                }}
-                className={`rounded px-2 py-1 uppercase text-[11px] font-bold transition-all ${
-                  activeRole === r
-                    ? "bg-[#56D9F5] text-[#003640] shadow-md shadow-[#56D9F5]/20"
-                    : "bg-[#080B12] text-slate-400 border border-slate-800 hover:text-slate-200 hover:border-slate-700"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60 text-[10px] font-mono text-slate-500">
-          <Info className="h-3 w-3 text-slate-400" />
-          <span>
-            Demonstration Persona Simulation • API Client passes <code className="text-[#56D9F5]">X-Role: {activeRole}</code> • Client-side UI persona simulation (not a server security boundary)
-          </span>
         </div>
       </div>
 
@@ -780,7 +674,7 @@ export default function SecurityOverviewPage() {
               Live Session Investigation Desk
             </h2>
             <p className="text-xs text-slate-400">
-              Active sessions queued for forensic inspection, step-up challenges, and triage
+              Active sessions evaluated by composite <strong className="text-slate-300">Risk Score</strong> (0–100, where higher values represent elevated threat). Verdicts follow canonical policy: <span className="text-[#34D399]">ALLOW</span>, <span className="text-[#FBBF24]">CHALLENGE</span>, and <span className="text-[#FB7185]">ESCALATE</span>.
             </p>
           </div>
 
@@ -823,7 +717,7 @@ export default function SecurityOverviewPage() {
               <tr>
                 <th className="p-3">Session &amp; Subject</th>
                 <th className="p-3">
-                  {activeRole === "rider" ? "Trust Status" : "Risk Score"}
+                  {activeRole === "rider" ? "Account Standing" : "Risk Score (0–100)"}
                 </th>
                 <th className="p-3">
                   {activeRole === "rider" ? "Account Security Notice" : "Observed Anomaly Vector"}
@@ -909,7 +803,7 @@ export default function SecurityOverviewPage() {
                   </td>
                   <td className="p-3">
                     <span className={`inline-block rounded border px-2 py-0.5 text-[10px] font-bold ${s.statusColor}`}>
-                      {s.verdict}
+                      {s.verdict === "INVESTIGATE" || s.verdict === "BLOCK" ? "ESCALATE" : s.verdict}
                     </span>
                   </td>
                   <td className="p-3 text-right">
@@ -1006,25 +900,84 @@ export default function SecurityOverviewPage() {
 
       {/* Test Fixture Scenarios Reference */}
       <section className="rounded-xl border border-slate-800/90 bg-[#101521]/60 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-300">
-            Standard Verification Fixtures (<code className="text-[#56D9F5]">shared/fixtures/</code>)
-          </span>
-          <span className="text-[11px] font-mono text-slate-500">5 contract-verified scenarios</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-800/70 pb-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white">
+                Standard Verification Fixtures (<code className="text-[#56D9F5]">shared/fixtures/</code>)
+              </span>
+              <span className="rounded bg-[#34D399]/10 px-1.5 py-0.2 text-[9px] font-mono text-[#34D399] border border-[#34D399]/30 font-semibold">
+                Contract Verified
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Evaluated on a 0–100 <strong className="text-slate-200">Trust Score</strong> scale, where higher trust indicates a healthier, verified account (100 = fully trusted, 0 = blocked). Decisions map to canonical policy verdicts: <span className="text-[#34D399]">ALLOW</span>, <span className="text-[#FBBF24]">CHALLENGE</span>, and <span className="text-[#FB7185]">ESCALATE</span>.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono text-slate-500 whitespace-nowrap">5 contract-verified scenarios</span>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5 text-xs font-mono">
+        <div className="grid gap-2.5 sm:grid-cols-3 lg:grid-cols-5 text-xs font-mono">
           {[
-            { name: "1. Normal Commute", score: 96, tag: "ALLOW", color: "text-[#34D399]" },
-            { name: "2. Ordinary Change", score: 78.5, tag: "ALLOW", color: "text-[#56D9F5]" },
-            { name: "3. Account Handoff", score: 42, tag: "CHALLENGE", color: "text-[#FBBF24]" },
-            { name: "4. GPS Spoof / Emu", score: 18, tag: "INVESTIGATE", color: "text-[#FB7185]" },
-            { name: "5. Collusion Ring", score: 8, tag: "BLOCK", color: "text-red-400" },
+            {
+              name: "1. Normal Commute",
+              trustScore: 96.0,
+              verdict: "ALLOW",
+              tier: "LOW Risk Tier",
+              subtext: "Clean Baseline",
+              badgeStyle: "border-[#34D399]/40 bg-[#34D399]/10 text-[#34D399]",
+              scoreColor: "text-[#34D399]",
+            },
+            {
+              name: "2. Ordinary Change",
+              trustScore: 78.5,
+              verdict: "ALLOW",
+              tier: "LOW Risk Tier",
+              subtext: "Hardware Attested",
+              badgeStyle: "border-[#56D9F5]/40 bg-[#56D9F5]/10 text-[#56D9F5]",
+              scoreColor: "text-[#56D9F5]",
+            },
+            {
+              name: "3. Account Handoff",
+              trustScore: 42.0,
+              verdict: "CHALLENGE",
+              tier: "MEDIUM Risk Tier",
+              subtext: "Face Step-Up",
+              badgeStyle: "border-[#FBBF24]/40 bg-[#FBBF24]/10 text-[#FBBF24]",
+              scoreColor: "text-[#FBBF24]",
+            },
+            {
+              name: "4. GPS Spoof / Emu",
+              trustScore: 18.0,
+              verdict: "ESCALATE",
+              tier: "HIGH Risk Tier",
+              subtext: "Investigate Case",
+              badgeStyle: "border-[#FB7185]/40 bg-[#FB7185]/10 text-[#FB7185]",
+              scoreColor: "text-[#FB7185]",
+            },
+            {
+              name: "5. Collusion Ring",
+              trustScore: 8.0,
+              verdict: "ESCALATE",
+              tier: "CRITICAL Risk Tier",
+              subtext: "Policy Block & Escrow",
+              badgeStyle: "border-red-500/40 bg-red-500/10 text-red-400",
+              scoreColor: "text-red-400",
+            },
           ].map((item) => (
-            <div key={item.name} className="rounded border border-slate-800 bg-[#080B12] p-2">
-              <div className="text-[11px] font-sans text-slate-300 truncate">{item.name}</div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-slate-400 text-[10px]">Score: {item.score}</span>
-                <span className={`font-bold text-[10px] ${item.color}`}>{item.tag}</span>
+            <div key={item.name} className="rounded-lg border border-slate-800 bg-[#080B12] p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-sans font-semibold text-slate-200 truncate">{item.name}</span>
+                <span className={`font-bold text-[9px] rounded px-1.5 py-0.2 border ${item.badgeStyle}`}>
+                  {item.verdict}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between pt-1 border-t border-slate-800/60">
+                <span className="text-slate-400 text-[10px]">Trust Score:</span>
+                <span className={`font-bold text-xs ${item.scoreColor}`}>{item.trustScore.toFixed(1)}</span>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                <span>{item.tier}</span>
+                <span className="text-slate-400 font-sans text-[10px]">{item.subtext}</span>
               </div>
             </div>
           ))}
