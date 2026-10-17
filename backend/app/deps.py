@@ -1,4 +1,4 @@
-from typing import Callable, Generator, Optional, Union
+from typing import Any, Callable, Generator, List, Optional, Union
 
 from fastapi import Header, HTTPException, status
 from sqlalchemy.orm import Session
@@ -29,23 +29,32 @@ def get_role(x_role: Optional[str] = Header(default="analyst", alias="X-Role")) 
     return x_role.strip().lower()
 
 
-def require_role(*allowed_roles: str) -> Callable[[str], str]:
+def require_role(*allowed_roles: Any) -> Callable[[str], str]:
     """
     FastAPI dependency factory enforcing Role-Based Access Control (RBAC).
     Usage:
         @router.get("/sensitive", dependencies=[Depends(require_role("admin", "investigator"))])
+        require_role(["analyst", "admin"])(role)
     """
+
     def _role_checker(role: str = Header(default="analyst", alias="X-Role")) -> str:
         current_role = (role or "analyst").strip().lower()
         # Admin always has superuser bypass
         if current_role == "admin":
             return current_role
 
-        normalized_allowed = [r.strip().lower() for r in allowed_roles]
+        flat_roles: List[str] = []
+        for item in allowed_roles:
+            if isinstance(item, (list, tuple, set)):
+                flat_roles.extend(item)
+            else:
+                flat_roles.append(item)
+
+        normalized_allowed = [str(r).strip().lower() for r in flat_roles]
         if current_role not in normalized_allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Forbidden: role '{current_role}' lacks required permissions. Allowed: {list(allowed_roles)}",
+                detail=f"Forbidden: role '{current_role}' lacks required permissions. Allowed: {normalized_allowed}",
             )
         return current_role
 
@@ -55,6 +64,7 @@ def require_role(*allowed_roles: str) -> Callable[[str], str]:
 # ==============================================================================
 # Field Masking Helpers (Stubs for privacy and role-based data projection)
 # ==============================================================================
+
 
 def mask_pii(value: Optional[str], role: str = "analyst") -> Optional[str]:
     """
@@ -72,7 +82,9 @@ def mask_pii(value: Optional[str], role: str = "analyst") -> Optional[str]:
     return value[:4] + "*" * (len(value) - 6) + value[-2:]
 
 
-def mask_financial(value: Union[str, float, None], role: str = "analyst") -> Union[str, float, None]:
+def mask_financial(
+    value: Union[str, float, None], role: str = "analyst"
+) -> Union[str, float, None]:
     """
     Masks bank account numbers or financial details
     unless caller holds 'admin' or 'finance' role.

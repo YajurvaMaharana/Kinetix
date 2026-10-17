@@ -1,4 +1,4 @@
-import { HealthStatus, Role, SessionRequest, Assessment, Case, Cluster, Payout, PolicySim } from "./types";
+import { HealthStatus, Role, SessionRequest, Assessment, Case, Cluster, Payout, PolicySim, FaceEnrollResponse, LivenessPrompt, FaceVerifyResponse, ChallengeFallbackResponse } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -117,12 +117,115 @@ export async function evaluatePayout(payload: Record<string, unknown>, role?: Ro
 }
 
 /**
+ * Lists payout disbursements with optional status filtering.
+ */
+export async function getPayouts(status?: string, role?: Role): Promise<Payout[]> {
+  const path = status ? `/payouts?status=${encodeURIComponent(status)}` : "/payouts";
+  return apiFetch<Payout[]>(path, { role });
+}
+
+/**
+ * Submits a new payout request evaluated against safety policies.
+ */
+export async function requestPayout(
+  payload: {
+    rider_id: string;
+    amount: number;
+    currency?: string;
+    destination_account_token?: string;
+    session_id?: string;
+  },
+  role?: Role
+): Promise<Payout> {
+  return apiFetch<Payout>("/payouts/request", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Analyst action to release or block a held payout.
+ */
+export async function patchPayout(
+  payoutId: string,
+  action: "release" | "block",
+  notes?: string,
+  role?: Role
+): Promise<Payout> {
+  return apiFetch<Payout>(`/payouts/${encodeURIComponent(payoutId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action, notes }),
+    role,
+  });
+}
+
+
+/**
  * Runs policy simulation across threshold cut-lines.
  */
 export async function simulatePolicy(cutLines: Record<string, number>, role?: Role): Promise<PolicySim> {
   return apiFetch<PolicySim>("/policies/simulate", {
     method: "POST",
     body: JSON.stringify(cutLines),
+    role,
+  });
+}
+
+/**
+ * Enrolls a rider face template (Fernet-encrypted vector, zero raw image storage).
+ */
+export async function enrollFace(
+  riderId: string,
+  payload: { image_base64?: string; scenario_flag?: string; embedding?: number[] } = {},
+  role?: Role
+): Promise<FaceEnrollResponse> {
+  return apiFetch<FaceEnrollResponse>(`/riders/${encodeURIComponent(riderId)}/face/enroll`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Generates an ephemeral cryptographic liveness prompt (blink, head turn, smile).
+ */
+export async function getLivenessPrompt(
+  challengeId: string,
+  role?: Role
+): Promise<LivenessPrompt> {
+  return apiFetch<LivenessPrompt>(`/challenges/${encodeURIComponent(challengeId)}/liveness-prompt`, {
+    method: "GET",
+    role,
+  });
+}
+
+/**
+ * Submits biometric verification (1:1 matching against enrolled template + liveness check).
+ */
+export async function verifyFace(
+  challengeId: string,
+  payload: { image_base64?: string; scenario_flag?: string; prompt_nonce?: string },
+  role?: Role
+): Promise<FaceVerifyResponse> {
+  return apiFetch<FaceVerifyResponse>(`/challenges/${encodeURIComponent(challengeId)}/face-verify`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Requests an alternate step-up challenge (e.g. OTP, document_check, manual_review).
+ */
+export async function fallbackChallenge(
+  challengeId: string,
+  payload: { fallback_type: "otp" | "document_check" | "manual_review"; reason?: string },
+  role?: Role
+): Promise<ChallengeFallbackResponse> {
+  return apiFetch<ChallengeFallbackResponse>(`/challenges/${encodeURIComponent(challengeId)}/fallback`, {
+    method: "POST",
+    body: JSON.stringify(payload),
     role,
   });
 }

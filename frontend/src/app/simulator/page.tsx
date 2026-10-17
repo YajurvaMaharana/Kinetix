@@ -7,12 +7,16 @@ import {
   RotateCcw,
   Sparkles,
   ShieldCheck,
+  ShieldAlert,
   Gauge,
   ExternalLink,
   Zap,
+  Play,
+  ScanFace,
 } from "lucide-react";
 import { evaluateSession } from "@/lib/api";
-import { Assessment, SessionRequest, ThreatTag } from "@/lib/types";
+import { Assessment, SessionRequest, ThreatTag, FaceVerifyResponse } from "@/lib/types";
+import FaceLivenessModal from "@/components/FaceLivenessModal";
 
 interface ScenarioPreset {
   id: string;
@@ -26,6 +30,7 @@ interface ScenarioPreset {
   mockGps: boolean;
   vpn: boolean;
   rooted: boolean;
+  payoutAccountChanged?: boolean;
   expectedVerdict: "ALLOW" | "CHALLENGE" | "INVESTIGATE" | "BLOCK";
   badgeColor: string;
 }
@@ -43,6 +48,7 @@ const scenarioPresets: ScenarioPreset[] = [
     mockGps: false,
     vpn: false,
     rooted: false,
+    payoutAccountChanged: false,
     expectedVerdict: "ALLOW",
     badgeColor: "border-[#34D399]/40 bg-[#34D399]/10 text-[#34D399]",
   },
@@ -58,6 +64,7 @@ const scenarioPresets: ScenarioPreset[] = [
     mockGps: false,
     vpn: false,
     rooted: false,
+    payoutAccountChanged: false,
     expectedVerdict: "CHALLENGE",
     badgeColor: "border-[#FBBF24]/40 bg-[#FBBF24]/10 text-[#FBBF24]",
   },
@@ -73,6 +80,7 @@ const scenarioPresets: ScenarioPreset[] = [
     mockGps: true,
     vpn: true,
     rooted: false,
+    payoutAccountChanged: false,
     expectedVerdict: "INVESTIGATE",
     badgeColor: "border-[#FB7185]/40 bg-[#FB7185]/10 text-[#FB7185]",
   },
@@ -88,6 +96,7 @@ const scenarioPresets: ScenarioPreset[] = [
     mockGps: true,
     vpn: true,
     rooted: true,
+    payoutAccountChanged: true,
     expectedVerdict: "BLOCK",
     badgeColor: "border-red-500/40 bg-red-500/10 text-red-400",
   },
@@ -102,10 +111,12 @@ export default function SimulatorPage() {
   const [mockGps, setMockGps] = useState<boolean>(false);
   const [vpn, setVpn] = useState<boolean>(false);
   const [rooted, setRooted] = useState<boolean>(false);
+  const [payoutAccountChanged, setPayoutAccountChanged] = useState<boolean>(false);
 
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [isSimulatedResponse, setIsSimulatedResponse] = useState<boolean>(true);
+  const [isFaceModalOpen, setIsFaceModalOpen] = useState<boolean>(false);
 
   const applyPreset = (preset: ScenarioPreset) => {
     setSelectedPresetId(preset.id);
@@ -116,6 +127,7 @@ export default function SimulatorPage() {
     setMockGps(preset.mockGps);
     setVpn(preset.vpn);
     setRooted(preset.rooted);
+    setPayoutAccountChanged(preset.payoutAccountChanged || false);
   };
 
   const runEvaluation = async () => {
@@ -162,6 +174,9 @@ export default function SimulatorPage() {
         payment_method: "apple_pay",
         tip_amount: 5.0,
         promo_applied: false,
+        payout_account_changed: payoutAccountChanged,
+        withdrawal_requested: payoutAccountChanged,
+        withdrawal_amount: payoutAccountChanged ? 250.0 : 0.0,
       },
     };
 
@@ -182,6 +197,7 @@ export default function SimulatorPage() {
       else if (speed > 80) score -= 10.0;
       if (routeDeviation > 40) score -= 15.0;
       if (typingCadence < 100 || typingCadence > 450) score -= 12.0;
+      if (payoutAccountChanged) score -= 25.0;
 
       score = Math.max(5, Math.min(99, score));
 
@@ -192,6 +208,7 @@ export default function SimulatorPage() {
       if (mockGps) tags.push("GEO_SPOOF" as const);
       if (faceConfidence < 0.5) tags.push("ACCOUNT_HANDOFF" as const);
       if (rooted) tags.push("DEVICE_ANOMALY" as const);
+      if (payoutAccountChanged) tags.push("PAYOUT_RISK" as const);
       if (score < 20 && mockGps) tags.push("COLLUSION_RING" as const);
       if (tags.length === 0) tags.push("CLEAN" as const);
 
@@ -240,7 +257,7 @@ export default function SimulatorPage() {
         threat_tags: tags,
         factors,
         challenge:
-          verdict === "CHALLENGE"
+          verdict === "CHALLENGE" || (faceConfidence < 0.6 && verdict === "ALLOW")
             ? {
                 challenge_id: "chlg_sim_01",
                 session_id: mockSession.session_id,
@@ -251,11 +268,17 @@ export default function SimulatorPage() {
               }
             : null,
         case_id: verdict === "INVESTIGATE" || verdict === "BLOCK" ? "INV-2024-8902" : null,
-        payout_decision: {
-          status: verdict === "BLOCK" ? "DENIED" : verdict === "INVESTIGATE" ? "ESCROW_HOLD" : "APPROVED",
-          hold_reason: verdict === "BLOCK" ? "Syndicate cluster detected" : null,
-          hold_period_hours: verdict === "INVESTIGATE" ? 24 : 0,
-        },
+        payout_decision: payoutAccountChanged
+          ? {
+              status: "ESCROW_HOLD",
+              hold_reason: "Destination account updated within 24-hour protection window. Requires liveness selfie + analyst clearance.",
+              hold_period_hours: 24,
+            }
+          : {
+              status: verdict === "BLOCK" ? "DENIED" : verdict === "INVESTIGATE" ? "ESCROW_HOLD" : "APPROVED",
+              hold_reason: verdict === "BLOCK" ? "Syndicate cluster detected" : null,
+              hold_period_hours: verdict === "INVESTIGATE" ? 24 : 0,
+            },
         evaluated_at: new Date().toISOString(),
       });
       setIsSimulatedResponse(true);
@@ -267,7 +290,31 @@ export default function SimulatorPage() {
   useEffect(() => {
     runEvaluation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speed, faceConfidence, typingCadence, routeDeviation, mockGps, vpn, rooted]);
+  }, [speed, faceConfidence, typingCadence, routeDeviation, mockGps, vpn, rooted, payoutAccountChanged]);
+
+  const handleVerified = (res: FaceVerifyResponse) => {
+    if (assessment) {
+      setAssessment({
+        ...assessment,
+        verdict: (res.new_verdict === "ALLOW" || res.new_verdict === "CHALLENGE" || res.new_verdict === "INVESTIGATE" ? res.new_verdict : "ALLOW") as "ALLOW" | "CHALLENGE" | "INVESTIGATE",
+        trust_score: res.passed ? Math.min(100, assessment.trust_score + 18) : Math.max(10, assessment.trust_score - 30),
+        threat_tags: res.passed ? ["CLEAN"] : ["ACCOUNT_HANDOFF"],
+        challenge: res.passed ? null : assessment.challenge,
+        payout_decision: res.passed
+          ? {
+              status: "APPROVED",
+              hold_reason: "Liveness verification successfully passed by driver.",
+              hold_period_hours: 0,
+            }
+          : assessment.payout_decision,
+      });
+    }
+  };
+
+  const isPayoutHoldActive =
+    payoutAccountChanged ||
+    assessment?.payout_decision?.status === "ESCROW_HOLD" ||
+    (assessment?.threat_tags && assessment.threat_tags.includes("PAYOUT_RISK"));
 
   return (
     <div className="space-y-6">
@@ -297,6 +344,38 @@ export default function SimulatorPage() {
           </span>
         </div>
       </div>
+
+      {/* Held Payout Escrow Window Banner */}
+      {isPayoutHoldActive && (
+        <div className="rounded-xl border border-amber-500/50 bg-amber-950/40 p-4 shadow-lg shadow-amber-950/30 text-amber-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-400 animate-pulse" />
+              <span className="font-bold text-sm text-white">
+                Payout Escrow Hold Active: 24-Hour Protection Window
+              </span>
+            </div>
+            <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/40">
+              STATUS: HELD
+            </span>
+          </div>
+          <p className="text-xs text-amber-200/90 leading-relaxed">
+            ⚠️ Disbursement of $250.00 is held under the 24-hour destination account modification window. Facial liveness re-verification and analyst clearance are required before funds release.
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-500/20">
+            <span className="text-[11px] font-mono text-amber-300/80">
+              Release Requires: <code className="text-amber-200">liveness_selfie + analyst_approval</code>
+            </span>
+            <button
+              onClick={() => setIsFaceModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/20 border border-amber-500/50 px-3 py-1 text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition-colors shadow-sm cursor-pointer"
+            >
+              <ScanFace className="h-3.5 w-3.5 text-amber-400" />
+              Resolve with Facial Liveness
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* SECTION 1: SCENARIO LIBRARY PRESETS */}
       <section className="space-y-3">
@@ -350,7 +429,7 @@ export default function SimulatorPage() {
             </h2>
             <button
               onClick={() => applyPreset(scenarioPresets[0])}
-              className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1"
+              className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
             >
               <RotateCcw className="h-3 w-3" /> Reset to Baseline
             </button>
@@ -474,6 +553,37 @@ export default function SimulatorPage() {
               <span className="flex-1 font-mono">Rooted / Jailbroken Hardware Kernel Flag</span>
               {rooted && <span className="text-[10px] text-red-400 font-mono font-bold">-35 PTS</span>}
             </label>
+
+            <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer p-2 rounded-lg bg-[#080B12] border border-slate-800 hover:border-slate-700">
+              <input
+                type="checkbox"
+                checked={payoutAccountChanged}
+                onChange={(e) => setPayoutAccountChanged(e.target.checked)}
+                className="rounded border-slate-700 bg-slate-800 accent-amber-500"
+              />
+              <span className="flex-1 font-mono">Payout Account Modified (Triggers 24h Escrow Lock)</span>
+              {payoutAccountChanged && <span className="text-[10px] text-amber-400 font-mono font-bold">24H HOLD</span>}
+            </label>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={runEvaluation}
+              disabled={evaluating}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-cyan-600/20 hover:bg-cyan-500 transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <Play className="h-4 w-4 fill-current" />
+              {evaluating ? "Evaluating Live..." : "Run Real-time Assessment"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsFaceModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition-all cursor-pointer"
+            >
+              <ScanFace className="h-4 w-4 text-cyan-400" />
+              Biometric Liveness Modal
+            </button>
           </div>
         </div>
 
@@ -582,6 +692,30 @@ export default function SimulatorPage() {
                 </div>
               </div>
 
+              {/* Challenge Trigger Box if present */}
+              {assessment.challenge && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-950/20 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-300">
+                    <span className="flex items-center gap-1.5">
+                      <ScanFace className="h-4 w-4" /> Challenge Required: {assessment.challenge.challenge_type}
+                    </span>
+                    <span className="font-mono text-[10px] text-amber-400/80 bg-amber-900/40 px-2 py-0.5 rounded border border-amber-700/50">
+                      {assessment.challenge.challenge_id}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Risk tier step-up required due to biometric/behavioral anomaly. Complete 1:1 facial liveness verification to restore session.
+                  </p>
+                  <button
+                    onClick={() => setIsFaceModalOpen(true)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500/20 border border-amber-500/50 px-3.5 py-2 text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition-all shadow-sm cursor-pointer"
+                  >
+                    <ScanFace className="h-4 w-4 text-amber-400" />
+                    Complete Face Liveness Challenge
+                  </button>
+                </div>
+              )}
+
               {/* Baseline Differential Comparison Table */}
               <div className="space-y-2 pt-2 border-t border-slate-800">
                 <h3 className="text-xs font-semibold text-slate-300">Baseline Differential vs Cohort Baseline</h3>
@@ -628,7 +762,7 @@ export default function SimulatorPage() {
                   </div>
                   <Link
                     href={`/cases?id=${assessment.case_id}`}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[#56D9F5]/10 px-3 py-1.5 text-xs font-semibold text-[#56D9F5] border border-[#56D9F5]/30 hover:bg-[#56D9F5]/20 transition-all"
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#56D9F5]/10 px-3 py-1.5 text-xs font-semibold text-[#56D9F5] border border-[#56D9F5]/30 hover:bg-[#56D9F5]/20 transition-all cursor-pointer"
                   >
                     Open Investigation Dossier
                     <ExternalLink className="h-3 w-3" />
@@ -639,6 +773,14 @@ export default function SimulatorPage() {
           )}
         </div>
       </div>
+
+      <FaceLivenessModal
+        isOpen={isFaceModalOpen}
+        onClose={() => setIsFaceModalOpen(false)}
+        challengeId={assessment?.challenge?.challenge_id || "chlg_demo_face_01"}
+        riderId={assessment?.rider_id || "rider_interactive_sim"}
+        onVerified={handleVerified}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db.session import Base, get_db
 from app.main import app
@@ -10,21 +11,15 @@ from app.models.entities import Session as SessionModel
 from app.services.events_bus import event_bus
 from app.services.privacy import tokenize
 
-# In-memory SQLite for fast, isolated test execution
+# In-memory SQLite with StaticPool for isolated in-memory test execution
 TEST_DATABASE_URL = "sqlite:///:memory:"
 test_engine = create_engine(
-    TEST_DATABASE_URL, connect_args={"check_same_thread": False}, future=True
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    future=True,
 )
-TestingSessionLocal = sessionmaker(
-    autocommit=False, autoflush=False, bind=test_engine, future=True
-)
-
-
-@pytest.fixture(autouse=True)
-def setup_test_db():
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    Base.metadata.drop_all(bind=test_engine)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine, future=True)
 
 
 def override_get_db():
@@ -35,7 +30,32 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest.fixture(autouse=True)
+def setup_test_db():
+    app.dependency_overrides[get_db] = override_get_db
+    Base.metadata.create_all(bind=test_engine)
+    db = TestingSessionLocal()
+    for rid in [
+        "rider_alice_01",
+        "rider_bob_01",
+        "rider_chlg_01",
+        "rider_esc_01",
+        "rider_priv_01",
+        "rider_audit_01",
+    ]:
+        r = Rider(
+            id=rid,
+            display_name=rid,
+            phone_number="+1-555-0100",
+            email=f"{rid}@example.com",
+            status="active",
+        )
+        db.add(r)
+    db.commit()
+    db.close()
+    yield
+    Base.metadata.drop_all(bind=test_engine)
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.anyio
@@ -63,7 +83,7 @@ async def test_session_happy_path():
         data = res.json()
         assert data["session"]["id"] == "sess_happy_01"
         assert data["assessment"]["verdict"] == "ALLOW"
-        assert data["assessment"]["risk_score"] == 10.0  # STUB trusted device risk
+        assert 0.0 <= data["assessment"]["risk_score"] <= 24.0
         assert data["assessment"]["risk_tier"] == "LOW"
         assert data["assessment"]["latency_ms"] > 0
 
@@ -72,7 +92,7 @@ async def test_session_happy_path():
         assert get_res.status_code == 200
         get_data = get_res.json()
         assert get_data["id"] == "sess_happy_01"
-        assert get_data["current_risk_score"] == 10.0
+        assert 0.0 <= get_data["current_risk_score"] <= 24.0
         assert get_data["latest_assessment"]["verdict"] == "ALLOW"
 
 
@@ -130,6 +150,9 @@ async def test_404_handlers():
         r3 = await client.get("/riders/unknown_rider_999")
         assert r3.status_code == 404
 
+        r3b = await client.post("/sessions", json={"rider_id": "unknown_rider_999"})
+        assert r3b.status_code == 404
+
         r4 = await client.get("/cases/unknown_case_999")
         assert r4.status_code == 404
 
@@ -148,11 +171,11 @@ async def test_challenge_workflow():
     """
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Trigger challenge via biometrics face divergence
+        # Trigger challenge via telemetry mock location (GPS_SPOOFING floor 60 -> CHALLENGE)
         payload = {
             "session_id": "sess_chlg_01",
             "rider_id": "rider_chlg_01",
-            "biometrics": {"face_match_confidence": 0.25},  # Low face similarity
+            "telemetry": {"mock_location_detected": True},
         }
         res = await client.post("/sessions", json=payload, headers={"X-Role": "admin"})
         assert res.status_code == 201
@@ -189,7 +212,7 @@ async def test_case_escalation_and_patch():
         payload = {
             "session_id": "sess_esc_01",
             "rider_id": "rider_esc_01",
-            "device_passport": {"mock_location_detected": True},
+            "biometrics": {"face_match_confidence": 0.20},  # FACE_MISMATCH floor 75 -> ESCALATE
         }
         res = await client.post("/sessions", json=payload, headers={"X-Role": "admin"})
         assert res.status_code == 201

@@ -14,8 +14,12 @@ async def lifespan(app: FastAPI):
     """
     Application startup and shutdown lifecycle handler.
     Initializes database tables on startup.
+    Loads the IsolationForest anomaly model once at startup into memory.
     """
     create_all()
+    from app.scoring.anomaly import load_isolation_forest
+
+    load_isolation_forest()
     yield
 
 
