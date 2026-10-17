@@ -47,6 +47,7 @@ class ThresholdConfig:
     w_env: float = 10.0
     w_env_behavior_interaction: float = 16.0
     w_device_risk: float = 10.0
+    w_travel_risk: float = 10.0
     w_graph_risk: float = 12.0
 
     # --------------------------------------------------------------------------
@@ -146,7 +147,19 @@ class ThresholdConfig:
     ewma_alpha: float = 0.25                    # Exponential moving average smoothing factor
     cooldown_hours: float = 48.0
 
+    # --------------------------------------------------------------------------
+    # 10. Kinematic Travel & Telemetry Parameters
+    # --------------------------------------------------------------------------
+    max_feasible_speed_kmh: float = 150.0       # Speed limit (infeasible when > 150 km/h)
+    min_time_interval_s: float = 5.0            # Ignore gaps under 5s to avoid GPS noise
+    gps_jump_distance_km: float = 1.0           # Teleportation distance jump threshold
+    spoof_straightness_ratio: float = 0.98      # Spoof straightness threshold (> 0.98)
+    spoof_speed_cv: float = 0.05                # Spoof speed CV threshold (< 0.05)
+    spoof_jitter_floor: float = 1.5             # Spoof bearing jitter floor (< 1.5 deg)
+    spoof_min_pings: int = 8                    # Minimum pings required for route test
+
     @classmethod
+
     def from_policy_config(cls, policy_config_or_dict: Optional[Any] = None) -> "ThresholdConfig":
         """
         Pure factory to instantiate ThresholdConfig from a database PolicyConfig model,
