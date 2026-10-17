@@ -32,7 +32,9 @@ def seed_database():
             except Exception as e:
                 print(f"[!] Warning reading {f.name}: {e}")
 
-    print(f"[+] Loaded {len(sessions)} fixture sessions: {', '.join(sessions) if sessions else 'None'}")
+    print(
+        f"[+] Loaded {len(sessions)} fixture sessions: {', '.join(sessions) if sessions else 'None'}"
+    )
     print("[+] Seeded 14-node collusion cluster: CLUSTER-RING-409 (Redmi Device Farm)")
     print("[+] Seeded 5 baseline test riders and device attestation passports.")
     print("[OK] Database seeding complete!")

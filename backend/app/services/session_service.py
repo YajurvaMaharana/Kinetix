@@ -431,7 +431,9 @@ class SessionService:
         # Query the last N location pings (from session_events)
         recent_pings_events = (
             db.query(SessionEvent)
-            .filter(SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping")
+            .filter(
+                SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping"
+            )
             .order_by(SessionEvent.created_at.desc())
             .limit(10)
             .all()
@@ -599,6 +601,7 @@ class SessionService:
             )
             audit_service.log(
                 db, actor, role, "CREATE_CHALLENGE", "challenge", chlg.id, f"Verdict: CHALLENGE ({chlg_type})"
+
             )
 
         elif scored.verdict == "ESCALATE":
@@ -742,11 +745,18 @@ class SessionService:
             .order_by(RiskAssessment.created_at.desc())
             .first()
         )
-        baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        baseline = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        )
 
         from app.services.baseline_service import baseline_service
+
         change_type, progress = baseline_service.detect_change_type(
-            {"session_id": session.id, "rider_id": session.rider_id, "device_id": session.device_id},
+            {
+                "session_id": session.id,
+                "rider_id": session.rider_id,
+                "device_id": session.device_id,
+            },
             cfg=None,
         )
 

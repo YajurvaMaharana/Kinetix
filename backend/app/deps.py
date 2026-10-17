@@ -35,6 +35,7 @@ def require_role(*allowed_roles: str) -> Callable[[str], str]:
     Usage:
         @router.get("/sensitive", dependencies=[Depends(require_role("admin", "investigator"))])
     """
+
     def _role_checker(role: str = Header(default="analyst", alias="X-Role")) -> str:
         current_role = (role or "analyst").strip().lower()
         # Admin always has superuser bypass
@@ -56,6 +57,7 @@ def require_role(*allowed_roles: str) -> Callable[[str], str]:
 # Field Masking Helpers (Stubs for privacy and role-based data projection)
 # ==============================================================================
 
+
 def mask_pii(value: Optional[str], role: str = "analyst") -> Optional[str]:
     """
     Masks Personally Identifiable Information (phone, full name, email)
@@ -72,7 +74,9 @@ def mask_pii(value: Optional[str], role: str = "analyst") -> Optional[str]:
     return value[:4] + "*" * (len(value) - 6) + value[-2:]
 
 
-def mask_financial(value: Union[str, float, None], role: str = "analyst") -> Union[str, float, None]:
+def mask_financial(
+    value: Union[str, float, None], role: str = "analyst"
+) -> Union[str, float, None]:
     """
     Masks bank account numbers or financial details
     unless caller holds 'admin' or 'finance' role.

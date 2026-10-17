@@ -19,9 +19,7 @@ test_engine = create_engine(
     poolclass=StaticPool,
     future=True,
 )
-TestingSessionLocal = sessionmaker(
-    autocommit=False, autoflush=False, bind=test_engine, future=True
-)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine, future=True)
 
 
 def override_get_db():

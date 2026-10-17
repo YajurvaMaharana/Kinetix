@@ -90,9 +90,15 @@ def test_variance_between_vs_within_riders():
     mean_within_speed_var = np.mean(within_speed_vars)
 
     # Within-rider variance should be significantly lower than between-rider variance
-    assert mean_within_tap_var < between_tap_var, "Tap variance within rider should be < between riders"
-    assert mean_within_typing_var < between_typing_var, "Typing variance within rider should be < between riders"
-    assert mean_within_speed_var < between_speed_var, "Speed variance within rider should be < between riders"
+    assert mean_within_tap_var < between_tap_var, (
+        "Tap variance within rider should be < between riders"
+    )
+    assert mean_within_typing_var < between_typing_var, (
+        "Typing variance within rider should be < between riders"
+    )
+    assert mean_within_speed_var < between_speed_var, (
+        "Speed variance within rider should be < between riders"
+    )
 
 
 def test_ordinary_changes_keep_behavior_near_persona():
@@ -112,7 +118,9 @@ def test_ordinary_changes_keep_behavior_near_persona():
     assert new_phone_sess["device_fingerprint"] != persona.primary_device["fingerprint"]
     # Tap interval shifted by ~5-20%
     ratio = new_phone_sess["tap_interval_ms"] / base["metrics"]["tap_interval_ms"]["median"]
-    assert 0.75 <= ratio <= 1.25, f"Biometric shift on new phone should be within 5-25%, got ratio {ratio}"
+    assert 0.75 <= ratio <= 1.25, (
+        f"Biometric shift on new phone should be within 5-25%, got ratio {ratio}"
+    )
 
     # Robust z score with new_device attenuation should remain low
     z_tap = compute_robust_z(
@@ -230,7 +238,9 @@ def test_label_counts_and_seed_acceptance():
     assert summary["ordinary_change_count"] == 100
     assert summary["attacks_count"] == 150
     assert summary["ring_count"] >= 6
-    assert summary["elapsed_seconds"] < 30.0, f"Seeding must take < 30s, took {summary['elapsed_seconds']}s"
+    assert summary["elapsed_seconds"] < 30.0, (
+        f"Seeding must take < 30s, took {summary['elapsed_seconds']}s"
+    )
 
     # Verify CSV files exist and have data
     train_path = Path(summary["train_csv_path"])

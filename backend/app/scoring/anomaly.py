@@ -66,7 +66,9 @@ def get_artifact_path() -> Path:
     return candidate_1
 
 
-def load_isolation_forest(artifact_path: Optional[Path] = None) -> Tuple[Optional[Any], Optional[np.ndarray]]:
+def load_isolation_forest(
+    artifact_path: Optional[Path] = None,
+) -> Tuple[Optional[Any], Optional[np.ndarray]]:
     """
     Loads serialized IsolationForest bundle with in-memory caching.
     Returns (model, train_reference_scores).
@@ -95,7 +97,9 @@ def load_isolation_forest(artifact_path: Optional[Path] = None) -> Tuple[Optiona
         _CACHED_PATH = path
         return _CACHED_IFOREST, _CACHED_TRAIN_SCORES
     except Exception as e:
-        logger.warning("Failed to deserialize IsolationForest from %s: %s. Fallback anomaly=0.0.", path, e)
+        logger.warning(
+            "Failed to deserialize IsolationForest from %s: %s. Fallback anomaly=0.0.", path, e
+        )
         return None, None
 
 

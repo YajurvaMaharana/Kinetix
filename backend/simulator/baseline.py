@@ -126,7 +126,9 @@ def compute_baseline(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
             # MAD = median(|x - median(x)|)
             mad = float(np.median(np.abs(arr - med)))
             # Minimum MAD floor to avoid division by zero in robust z-score
-            mad_floor = max(1e-4, (DEFAULT_METRIC_BOUNDS[m][1] - DEFAULT_METRIC_BOUNDS[m][0]) * 0.01)
+            mad_floor = max(
+                1e-4, (DEFAULT_METRIC_BOUNDS[m][1] - DEFAULT_METRIC_BOUNDS[m][0]) * 0.01
+            )
             mad = max(mad, mad_floor)
             metrics_summary[m] = {
                 "median": round(med, 4),

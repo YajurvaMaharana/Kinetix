@@ -72,7 +72,7 @@ def test_new_phone_adapts_after_3_sessions_and_4th_is_allow(baseline_rider):
             "is_new_device": True,
             "device_id": dev_token,
             "device_token": dev_token,
-            "tap_interval_ms": 205.0,   # slight screen shift
+            "tap_interval_ms": 205.0,  # slight screen shift
             "typing_cps": 4.3,
             "swipe_velocity_px_s": 1260.0,
             "interaction_timing_cv": 0.29,
@@ -147,7 +147,10 @@ def test_new_phone_adapts_after_3_sessions_and_4th_is_allow(baseline_rider):
     # Acceptance requirement: 4th session is ALLOW
     assert res4.verdict == "ALLOW"
     assert res4.risk_score <= 24.0
-    assert any("trusted_device" in f.name.lower() or "passport" in f.description.lower() for f in res4.mitigating_factors)
+    assert any(
+        "trusted_device" in f.name.lower() or "passport" in f.description.lower()
+        for f in res4.mitigating_factors
+    )
 
 
 # ==============================================================================
@@ -165,7 +168,7 @@ def test_relocation_adapts_after_5_sessions_across_2_days(baseline_rider):
         return {
             "session_id": sess_id,
             "rider_id": baseline_rider["rider_id"],
-            "city": "pune",             # New operating metropolitan city
+            "city": "pune",  # New operating metropolitan city
             "zone_id": "kothrud",
             "is_new_device": False,
             "tap_interval_ms": 186.0,
@@ -328,9 +331,9 @@ def test_handoff_scenario_never_adapts(baseline_rider):
             "zone_id": "bandra_west",
             "is_new_device": True,
             "device_token": fraud_device,
-            "tap_interval_ms": 310.0,   # Diverged from genuine 185ms
-            "typing_cps": 2.2,          # Diverged from genuine 4.8
-            "swipe_velocity_px_s": 650.0, # Diverged from genuine 1150
+            "tap_interval_ms": 310.0,  # Diverged from genuine 185ms
+            "typing_cps": 2.2,  # Diverged from genuine 4.8
+            "swipe_velocity_px_s": 650.0,  # Diverged from genuine 1150
             "biometrics": {"face_match_confidence": 0.25},
         }
 
@@ -508,9 +511,13 @@ def test_scenarios_O1_to_O4_progression_to_allow(baseline_rider):
     d1 = datetime(2026, 11, 20, 10, 0, 0, tzinfo=timezone.utc)
     d2 = datetime(2026, 11, 21, 10, 0, 0, tzinfo=timezone.utc)
     for i in range(3):
-        baseline_service.process_session_adaptation(baseline_rider, o2_event, 0.15, timestamp=d1 + timedelta(hours=i))
+        baseline_service.process_session_adaptation(
+            baseline_rider, o2_event, 0.15, timestamp=d1 + timedelta(hours=i)
+        )
     for i in range(2):
-        baseline_service.process_session_adaptation(baseline_rider, o2_event, 0.15, timestamp=d2 + timedelta(hours=i))
+        baseline_service.process_session_adaptation(
+            baseline_rider, o2_event, 0.15, timestamp=d2 + timedelta(hours=i)
+        )
     ctx_o2_adapted = ScoringContext(request_or_event=o2_event, baseline=baseline_rider)
     res_o2_adapted = score_session(ctx_o2_adapted)
     assert res_o2_adapted.verdict == "ALLOW"
@@ -525,9 +532,7 @@ def test_eval_set_ordinary_change_friction_below_10_percent():
     Validates that ordinary_change friction (sessions receiving CHALLENGE or ESCALATE)
     is strictly less than 10% (target < 10%).
     """
-    eval_csv_path = os.path.join(
-        os.path.dirname(__file__), "..", "ml", "data", "eval.csv"
-    )
+    eval_csv_path = os.path.join(os.path.dirname(__file__), "..", "ml", "data", "eval.csv")
     if not os.path.exists(eval_csv_path):
         pytest.skip(f"Eval dataset {eval_csv_path} not found.")
 
