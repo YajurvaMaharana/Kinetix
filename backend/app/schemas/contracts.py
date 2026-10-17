@@ -347,9 +347,15 @@ class DevicePassportResponse(BaseModel):
 # Case Schemas
 # ------------------------------------------------------------------------------
 class CasePatchRequest(BaseModel):
-    status: Optional[str] = None  # OPEN, IN_REVIEW, RESOLVED_LEGIT, CONFIRMED_FRAUD
+    status: Optional[str] = None  # OPEN, IN_REVIEW, RESOLVED_LEGIT, CONFIRMED_FRAUD, etc.
     assigned_to: Optional[str] = None
     notes: Optional[str] = None
+
+
+class CaseActionRequest(BaseModel):
+    action: str  # false_positive, confirm_fraud, request_reverify, restrict, escalate, clear
+    note: str
+    assigned_to: Optional[str] = None
 
 
 class CaseResponse(BaseModel):
@@ -357,15 +363,78 @@ class CaseResponse(BaseModel):
     case_id: str
     session_id: Optional[str] = None
     rider_id: str
+    rider_name: Optional[str] = None
+    rider_phone: Optional[str] = None
     severity: str
     status: str
-    assigned_to: Optional[str] = None
+    risk_score: Optional[float] = 0.0
     threat_summary: Optional[str] = None
+    threat_tag: Optional[str] = None
+    threat_tags: List[str] = Field(default_factory=list)
+    assigned_to: Optional[str] = None
     notes: Optional[str] = None
     change_type: Optional[str] = None
     adaptation_progress: Optional[str] = None
+    age_minutes: Optional[int] = 0
+    age_display: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class MetricComparisonItem(BaseModel):
+    metric: str
+    label: str
+    observed: float
+    baseline_median: float
+    unit: str
+    deviation_pct: float
+    status: str  # NORMAL, ANOMALOUS
+
+
+class ReviewerActionItem(BaseModel):
+    id: str
+    case_id: str
+    reviewer_id: str
+    action_type: str
+    notes: Optional[str] = None
+    assessment_risk: Optional[float] = None
+    classification_snapshot: Optional[str] = None
+    threat_tag: Optional[str] = None
+    created_at: str
+
+
+class CaseDetailResponse(BaseModel):
+    case: CaseResponse
+    assessment: Optional[Dict[str, Any]] = None
+    baseline_vs_session: List[MetricComparisonItem] = Field(default_factory=list)
+    rider_trust: Optional[Dict[str, Any]] = None
+    device_passport: Optional[Dict[str, Any]] = None
+    cluster: Optional[Dict[str, Any]] = None
+    challenge_history: List[Dict[str, Any]] = Field(default_factory=list)
+    payouts: List[Dict[str, Any]] = Field(default_factory=list)
+    audit_trail: List[Dict[str, Any]] = Field(default_factory=list)
+    reviewer_actions: List[ReviewerActionItem] = Field(default_factory=list)
+
+
+class TagFeedbackItem(BaseModel):
+    threat_tag: str
+    classification: str
+    confirmed_count: int
+    false_positive_count: int
+    total_reviews: int
+    observed_precision: float
+    false_positive_rate: float
+    suggested_nudge: str
+
+
+class PolicyFeedbackSummaryResponse(BaseModel):
+    total_confirmed: int
+    total_false_positives: int
+    total_reviews: int
+    global_precision: float
+    breakdown: List[TagFeedbackItem] = Field(default_factory=list)
+    active_policy_version: str = "v2.4.0"
+    suggested_actions: List[str] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------------------------

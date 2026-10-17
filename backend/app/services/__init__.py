@@ -1,3 +1,4 @@
+from app.services.case_service import CaseService, case_service
 from app.services.device_service import DeviceService, device_service
 from app.services.face_service import (
     FaceService,
@@ -34,5 +35,7 @@ __all__ = [
     "SimulatedLivenessChecker",
     "PayoutService",
     "payout_service",
+    "CaseService",
+    "case_service",
 ]
 

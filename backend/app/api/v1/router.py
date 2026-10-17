@@ -1,10 +1,11 @@
 import json
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -31,7 +32,7 @@ from app.models.entities import (
 from app.schemas.contracts import (
     AssessmentSchema,
     AuditLogResponse,
-    CasePatchRequest,
+    CaseActionRequest,
     CaseResponse,
     ChallengeFallbackRequest,
     ChallengeFallbackResponse,
@@ -55,6 +56,7 @@ from app.schemas.contracts import (
     PayoutActionRequest,
     PayoutRequestCreate,
     PayoutResponse,
+    PolicyFeedbackSummaryResponse,
     RiderResponse,
     SessionCreateRequest,
     SessionEventRequest,
@@ -63,6 +65,7 @@ from app.schemas.contracts import (
     TimelineResponse,
 )
 from app.services.audit_service import audit_service
+from app.services.case_service import case_service, format_age
 from app.services.events_bus import event_bus
 from app.services.face_service import face_service
 from app.services.payout_service import payout_service
@@ -889,103 +892,148 @@ async def get_device_passport(
 # 5. Cases & Analyst Workflows
 # ==============================================================================
 @api_router.get("/cases", response_model=List[CaseResponse], tags=["Cases"])
-async def list_cases(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_cases(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    severity_filter: Optional[str] = Query(None, alias="severity"),
+    rider_filter: Optional[str] = Query(None, alias="rider"),
+    threat_tag_filter: Optional[str] = Query(None, alias="threat_tag"),
+    date_filter: Optional[str] = Query(None, alias="date"),
+    sort_by: str = Query("created_at", alias="sort"),
+    order: str = Query("desc"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
     """
-    Lists cases with optional status filter.
+    Lists queue cases with multi-criteria filtering (status, severity, rider, threat_tag, date)
+    and sorting. Automatically masks PII for role=analyst.
     """
-    q = db.query(Case)
-    if status_filter:
-        q = q.filter(Case.status == status_filter)
-    cases = q.order_by(Case.created_at.desc()).limit(100).all()
-    return [
-        CaseResponse(
-            id=c.id,
-            case_id=c.id,
-            session_id=c.session_id,
-            rider_id=c.rider_id,
-            severity=c.severity,
-            status=c.status,
-            assigned_to=c.assigned_to,
-            threat_summary=c.threat_summary,
-            notes=c.notes,
-            created_at=c.created_at.isoformat(),
-            updated_at=c.updated_at.isoformat(),
-        )
-        for c in cases
-    ]
-
-
-@api_router.get("/cases/{case_id}", response_model=CaseResponse, tags=["Cases"])
-async def get_case(case_id: str, db: Session = Depends(get_db)):
-    """
-    Retrieves case details.
-    """
-    c = db.query(Case).filter(Case.id == case_id).first()
-    if not c:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Case '{case_id}' not found"
-        )
-
-    return CaseResponse(
-        id=c.id,
-        case_id=c.id,
-        session_id=c.session_id,
-        rider_id=c.rider_id,
-        severity=c.severity,
-        status=c.status,
-        assigned_to=c.assigned_to,
-        threat_summary=c.threat_summary,
-        notes=c.notes,
-        created_at=c.created_at.isoformat(),
-        updated_at=c.updated_at.isoformat(),
+    return case_service.list_cases(
+        db=db,
+        status_filter=status_filter,
+        severity_filter=severity_filter,
+        rider_filter=rider_filter,
+        threat_tag_filter=threat_tag_filter,
+        date_filter=date_filter,
+        sort_by=sort_by,
+        order=order,
+        limit=limit,
+        offset=offset,
+        role=role,
     )
+
+
+@api_router.get("/cases/{case_id}", tags=["Cases"])
+async def get_case(
+    case_id: str,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Retrieves complete 360-degree case dossier:
+    case metadata, assessment with factor waterfall, baseline vs session comparison
+    (observed vs median per metric), rider trust score, device passport, fraud cluster,
+    challenge history, payouts, and audit trail.
+    """
+    detail = case_service.get_case_detail(db=db, case_id=case_id, role=role)
+    c_dict = detail.case.model_dump()
+    # Merge rich dossier sections into root response for backwards compatibility
+    c_dict["case"] = detail.case.model_dump()
+    c_dict["assessment"] = detail.assessment
+    c_dict["baseline_vs_session"] = [item.model_dump() for item in detail.baseline_vs_session]
+    c_dict["rider_trust_score"] = detail.rider_trust
+    c_dict["rider_trust"] = detail.rider_trust
+    c_dict["device_passport"] = detail.device_passport
+    c_dict["cluster"] = detail.cluster
+    c_dict["challenge_history"] = detail.challenge_history
+    c_dict["payouts"] = detail.payouts
+    c_dict["audit_trail"] = detail.audit_trail
+    c_dict["reviewer_actions"] = [act.model_dump() for act in detail.reviewer_actions]
+    return c_dict
 
 
 @api_router.patch("/cases/{case_id}", response_model=CaseResponse, tags=["Cases"])
 async def update_case(
     case_id: str,
-    patch: CasePatchRequest,
+    payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     role: str = Depends(get_role),
     x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
 ):
     """
-    Updates case status, assignee, or analyst notes. Records ReviewerAction and AuditLog.
+    Analyst review action on a case with verified side-effects:
+    action in {false_positive, confirm_fraud, request_reverify, restrict, escalate, clear}
+    with required review note.
+    Records reviewer_actions (with risk and class snapshot) and audit_logs.
     """
+    require_role("analyst", "admin", "investigator", "finance")(role)
+    actor = x_actor or role
+
+    action = payload.get("action")
+    note = payload.get("note") or payload.get("notes")
+    assigned_to = payload.get("assigned_to")
+
+    if action:
+        if not note or not str(note).strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A non-empty review note is strictly required for all case actions.",
+            )
+        req = CaseActionRequest(
+            action=str(action),
+            note=str(note).strip(),
+            assigned_to=str(assigned_to) if assigned_to else None,
+        )
+        res = case_service.handle_case_action(
+            db=db,
+            case_id=case_id,
+            action_req=req,
+            actor=actor,
+            role=role,
+        )
+        event_bus.publish(
+            f"case_action_{action.lower()}",
+            {"case_id": case_id, "action": action, "actor": actor, "status": res.status},
+        )
+        return res
+
+    # Legacy fallback for patch without action key
     c = db.query(Case).filter(Case.id == case_id).first()
     if not c:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Case '{case_id}' not found"
         )
 
-    actor = x_actor or role
     changes = []
-
-    if patch.status is not None:
-        c.status = patch.status
-        changes.append(f"status={patch.status}")
-    if patch.assigned_to is not None:
-        c.assigned_to = patch.assigned_to
-        changes.append(f"assigned_to={patch.assigned_to}")
-    if patch.notes is not None:
-        c.notes = patch.notes
+    if "status" in payload and payload["status"] is not None:
+        c.status = payload["status"]
+        changes.append(f"status={payload['status']}")
+    if "assigned_to" in payload and payload["assigned_to"] is not None:
+        c.assigned_to = payload["assigned_to"]
+        changes.append(f"assigned_to={payload['assigned_to']}")
+    if note:
+        c.notes = f"{c.notes or ''}\n[{actor}]: {note}".strip()
         changes.append("notes_updated")
 
     c.updated_at = utcnow()
 
     # Record ReviewerAction
-    action = ReviewerAction(
-        id=f"act_{c.id[:8]}",
+    rev_act = ReviewerAction(
+        id=f"act_{uuid.uuid4().hex[:10]}",
         case_id=c.id,
         reviewer_id=actor,
         action_type="UPDATE_CASE",
-        notes=patch.notes or ", ".join(changes),
+        notes=note or ", ".join(changes),
+        assessment_risk=c.risk_score or 50.0,
+        classification_snapshot="ordinary_change",
+        threat_tag=c.threat_tag or "UNSPECIFIED",
         created_at=utcnow(),
     )
-    db.add(action)
+    db.add(rev_act)
     db.commit()
+    db.refresh(c)
 
-    # Immutable Audit Log
     audit_service.log(
         db,
         actor,
@@ -996,6 +1044,7 @@ async def update_case(
         f"Updated: {', '.join(changes)}",
     )
 
+    age_min, age_str = format_age(c.created_at)
     return CaseResponse(
         id=c.id,
         case_id=c.id,
@@ -1003,9 +1052,14 @@ async def update_case(
         rider_id=c.rider_id,
         severity=c.severity,
         status=c.status,
-        assigned_to=c.assigned_to,
+        risk_score=c.risk_score or 0.0,
         threat_summary=c.threat_summary,
+        threat_tag=c.threat_tag,
+        threat_tags=[c.threat_tag] if c.threat_tag else [],
+        assigned_to=c.assigned_to,
         notes=c.notes,
+        age_minutes=age_min,
+        age_display=age_str,
         created_at=c.created_at.isoformat(),
         updated_at=c.updated_at.isoformat(),
     )
@@ -1104,6 +1158,135 @@ async def get_audit_logs(db: Session = Depends(get_db)):
         )
         for log in logs
     ]
+
+
+# ==============================================================================
+# 6b. Policy & Feedback Summary (Admin Only for updates)
+# ==============================================================================
+@api_router.get(
+    "/policy/feedback-summary",
+    response_model=PolicyFeedbackSummaryResponse,
+    tags=["Policy"],
+)
+async def get_policy_feedback_summary(
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Returns reviewer feedback summary across threat tags and classifications,
+    observed precision, and suggested threshold boundary nudges.
+    """
+    return case_service.get_policy_feedback_summary(db=db)
+
+
+@api_router.get(
+    "/policy/active",
+    tags=["Policy"],
+)
+async def get_active_policy(
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Retrieves the currently active policy configuration.
+    """
+    active = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
+    if not active:
+        active = PolicyConfig(
+            id="policy_v2_default",
+            version="v2.4.0",
+            allow_threshold=20.0,
+            monitor_threshold=50.0,
+            challenge_threshold=75.0,
+            escalate_threshold=80.0,
+            is_active=True,
+            created_at=utcnow(),
+        )
+        db.add(active)
+        db.commit()
+        db.refresh(active)
+
+    return {
+        "id": active.id,
+        "version": active.version,
+        "allow_threshold": active.allow_threshold,
+        "monitor_threshold": active.monitor_threshold,
+        "challenge_threshold": active.challenge_threshold,
+        "escalate_threshold": active.escalate_threshold,
+        "is_active": active.is_active,
+        "created_at": active.created_at.isoformat(),
+    }
+
+
+@api_router.post(
+    "/policy/update",
+    dependencies=[Depends(require_role("admin"))],
+    tags=["Policy"],
+)
+@api_router.put(
+    "/policy/active",
+    dependencies=[Depends(require_role("admin"))],
+    tags=["Policy"],
+)
+async def update_active_policy(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="admin", alias="X-Actor"),
+):
+    """
+    Updates active policy threshold cut-lines. Restricted strictly to role=admin.
+    """
+    actor = x_actor or role
+    active = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
+    if not active:
+        active = PolicyConfig(
+            id=f"pol_{uuid.uuid4().hex[:8]}",
+            version="v2.4.0",
+            allow_threshold=20.0,
+            monitor_threshold=50.0,
+            challenge_threshold=75.0,
+            escalate_threshold=80.0,
+            is_active=True,
+            created_at=utcnow(),
+        )
+        db.add(active)
+
+    if "allow_threshold" in payload:
+        active.allow_threshold = float(payload["allow_threshold"])
+    if "monitor_threshold" in payload:
+        active.monitor_threshold = float(payload["monitor_threshold"])
+    if "challenge_threshold" in payload:
+        active.challenge_threshold = float(payload["challenge_threshold"])
+    if "escalate_threshold" in payload:
+        active.escalate_threshold = float(payload["escalate_threshold"])
+    if "version" in payload:
+        active.version = str(payload["version"])
+
+    db.commit()
+    db.refresh(active)
+
+    audit_service.log(
+        db=db,
+        actor=actor,
+        role=role,
+        action="POLICY_UPDATED",
+        entity_type="policy",
+        entity_id=active.id,
+        detail=(
+            f"Policy updated to v{active.version}: allow={active.allow_threshold}, "
+            f"challenge={active.challenge_threshold}, escalate={active.escalate_threshold}"
+        ),
+    )
+    return {
+        "status": "success",
+        "policy_id": active.id,
+        "version": active.version,
+        "allow_threshold": active.allow_threshold,
+        "monitor_threshold": active.monitor_threshold,
+        "challenge_threshold": active.challenge_threshold,
+        "escalate_threshold": active.escalate_threshold,
+    }
 
 
 # ==============================================================================

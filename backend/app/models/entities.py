@@ -1,5 +1,6 @@
+import json
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -204,7 +205,7 @@ class RiskAssessment(Base):
         String(64), ForeignKey("sessions.id"), nullable=False, index=True
     )
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
-    raw_risk: Mapped[float] = mapped_column(Float, nullable=False)
+    raw_risk: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_tier: Mapped[str] = mapped_column(String(32), nullable=False)
     classification: Mapped[Optional[str]] = mapped_column(
@@ -220,6 +221,34 @@ class RiskAssessment(Base):
 
     session: Mapped["Session"] = relationship("Session", back_populates="assessments")
     factors: Mapped[List["RiskFactor"]] = relationship("RiskFactor", back_populates="assessment")
+
+    @property
+    def threat_tags(self) -> List[str]:
+        if not self.threat_tags_json:
+            return []
+        try:
+            data = json.loads(self.threat_tags_json)
+            if isinstance(data, str) and data.startswith("[") and data.endswith("]"):
+                data = json.loads(data)
+            if isinstance(data, list):
+                res: List[str] = []
+                for item in data:
+                    s = str(item).strip("[]'\"")
+                    if s:
+                        res.append(s)
+                return res
+            return [str(data).strip("[]'\"")]
+        except Exception:
+            return [self.threat_tags_json.strip("[]'\"")]
+
+    @threat_tags.setter
+    def threat_tags(self, val: Any) -> None:
+        if isinstance(val, list):
+            self.threat_tags_json = json.dumps(val)
+        elif val is None:
+            self.threat_tags_json = None
+        else:
+            self.threat_tags_json = json.dumps([str(val)])
 
 
 class RiskFactor(Base):
@@ -378,13 +407,19 @@ class Case(Base):
     status: Mapped[str] = mapped_column(String(32), default="OPEN", nullable=False)
     assigned_to: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     threat_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    threat_tag: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
 
-    actions: Mapped[List["ReviewerAction"]] = relationship("ReviewerAction", back_populates="case")
+    actions: Mapped[List["ReviewerAction"]] = relationship(
+        "ReviewerAction", back_populates="case", cascade="all, delete-orphan"
+    )
+    rider: Mapped["Rider"] = relationship("Rider")
+    session: Mapped[Optional["Session"]] = relationship("Session")
 
 
 class ReviewerAction(Base):
@@ -397,6 +432,9 @@ class ReviewerAction(Base):
     reviewer_id: Mapped[str] = mapped_column(String(64), nullable=False)
     action_type: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    assessment_risk: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    classification_snapshot: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    threat_tag: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     case: Mapped["Case"] = relationship("Case", back_populates="actions")

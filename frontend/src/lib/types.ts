@@ -105,16 +105,143 @@ export interface Challenge {
 }
 
 export interface Case {
+  id?: string;
   case_id: string;
   session_id: string;
   rider_id: string;
+  rider_name?: string | null;
+  rider_phone?: string | null;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  status: "OPEN" | "IN_REVIEW" | "RESOLVED_LEGIT" | "CONFIRMED_FRAUD";
+  status:
+    | "OPEN"
+    | "IN_REVIEW"
+    | "RESOLVED"
+    | "RESOLVED_LEGIT"
+    | "RESOLVED_FALSE_POSITIVE"
+    | "CONFIRMED_FRAUD"
+    | string;
   assigned_to: string | null;
   threat_summary?: string;
+  threat_tag?: string | null;
+  threat_tags?: string[];
+  risk_score?: number;
+  age_minutes?: number;
+  age_display?: string;
   notes?: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
+}
+
+export interface MetricComparisonItem {
+  metric: string;
+  observed: number;
+  baseline_median: number;
+  deviation_pct: number;
+  unit: string;
+  is_anomaly: boolean;
+}
+
+export interface ReviewerActionItem {
+  action_id?: string;
+  case_id?: string;
+  reviewer_id: string;
+  action: string;
+  notes?: string | null;
+  assessment_risk?: number | null;
+  classification_snapshot?: string | null;
+  threat_tag?: string | null;
+  created_at: string;
+}
+
+export interface CaseDetailResponse {
+  id?: string;
+  case_id?: string;
+  case: Case;
+  assessment?: {
+    risk_score?: number;
+    verdict?: string;
+    classification?: string;
+    threat_tags?: string[];
+    confidence?: number;
+    factors?: Array<{
+      name?: string;
+      code?: string;
+      category?: string;
+      impact?: string;
+      weight?: number;
+      score?: number;
+      description?: string;
+    }>;
+  };
+  baseline_vs_session: MetricComparisonItem[];
+  rider_trust_score?: {
+    score: number;
+    trust_health: number;
+    tier: string;
+    trend: string;
+    bonus_points: number;
+  };
+  device_passport?: {
+    device_id: string;
+    hardware_profile: string;
+    os_version: string;
+    trust_level: string;
+    emulator_flag: boolean;
+    rooted_flag: boolean;
+    mock_location_flag: boolean;
+    linked_rider_count: number;
+    network_reputation: number;
+  };
+  cluster?: {
+    cluster_id: string;
+    cluster_name: string;
+    risk_tier: string;
+    size: number;
+    shared_identifiers: string[];
+  } | null;
+  challenge_history: Array<{
+    challenge_id: string;
+    challenge_type: string;
+    level: number;
+    reason_code: string;
+    status: string;
+    created_at: string;
+    expires_at?: string;
+  }>;
+  payouts: Array<{
+    payout_id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    risk_at_request?: number;
+    reason?: string;
+    created_at: string;
+  }>;
+  audit_trail: Array<{
+    log_id: string;
+    action: string;
+    actor_id: string;
+    details?: string;
+    timestamp: string;
+  }>;
+}
+
+export interface TagFeedbackItem {
+  threat_tag: string;
+  classification: string;
+  total_reviews: number;
+  confirmed_fraud_count: number;
+  false_positive_count: number;
+  observed_precision: number;
+  suggested_threshold_nudge?: string | null;
+}
+
+export interface PolicyFeedbackSummary {
+  total_reviewed: number;
+  total_confirmed_fraud: number;
+  total_false_positives: number;
+  overall_precision: number;
+  tag_feedback: TagFeedbackItem[];
 }
 
 export interface Cluster {

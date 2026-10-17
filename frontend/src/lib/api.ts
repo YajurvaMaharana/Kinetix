@@ -1,4 +1,19 @@
-import { HealthStatus, Role, SessionRequest, Assessment, Case, Cluster, Payout, PolicySim, FaceEnrollResponse, LivenessPrompt, FaceVerifyResponse, ChallengeFallbackResponse } from "./types";
+import {
+  HealthStatus,
+  Role,
+  SessionRequest,
+  Assessment,
+  Case,
+  CaseDetailResponse,
+  PolicyFeedbackSummary,
+  Cluster,
+  Payout,
+  PolicySim,
+  FaceEnrollResponse,
+  LivenessPrompt,
+  FaceVerifyResponse,
+  ChallengeFallbackResponse,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -91,11 +106,68 @@ export async function evaluateSession(payload: SessionRequest, role?: Role): Pro
   });
 }
 
+export interface CaseFilterParams {
+  status?: string;
+  severity?: string;
+  rider?: string;
+  threat_tag?: string;
+  date?: string;
+  sort?: string;
+  skip?: number;
+  limit?: number;
+}
+
 /**
- * Fetches open cases for fraud investigation.
+ * Fetches cases for fraud investigation with multi-criteria filters.
  */
-export async function getCases(role?: Role): Promise<Case[]> {
-  return apiFetch<Case[]>("/cases", { role });
+export async function getCases(
+  params?: CaseFilterParams,
+  role?: Role
+): Promise<Case[]> {
+  const query = new URLSearchParams();
+  if (params?.status && params.status !== "ALL") query.set("status", params.status);
+  if (params?.severity && params.severity !== "ALL") query.set("severity", params.severity);
+  if (params?.rider) query.set("rider", params.rider);
+  if (params?.threat_tag && params.threat_tag !== "ALL") query.set("threat_tag", params.threat_tag);
+  if (params?.date) query.set("date", params.date);
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.skip !== undefined) query.set("skip", String(params.skip));
+  if (params?.limit !== undefined) query.set("limit", String(params.limit));
+
+  const qs = query.toString();
+  const path = qs ? `/cases?${qs}` : "/cases";
+  return apiFetch<Case[]>(path, { role });
+}
+
+/**
+ * Fetches 360-degree case dossier including assessment, biometric telemetry comparison,
+ * trust history, device passport, fraud cluster, challenges, payouts, and audit trail.
+ */
+export async function getCaseDetail(caseId: string, role?: Role): Promise<CaseDetailResponse> {
+  return apiFetch<CaseDetailResponse>(`/cases/${encodeURIComponent(caseId)}`, { role });
+}
+
+/**
+ * Submits an analyst review action with mandatory notes.
+ * Actions: false_positive | confirm_fraud | request_reverify | restrict | escalate | clear
+ */
+export async function actOnCase(
+  caseId: string,
+  payload: { action: string; note: string },
+  role?: Role
+): Promise<CaseDetailResponse> {
+  return apiFetch<CaseDetailResponse>(`/cases/${encodeURIComponent(caseId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    role,
+  });
+}
+
+/**
+ * Retrieves policy feedback summary and suggested threshold nudges.
+ */
+export async function getPolicyFeedbackSummary(role?: Role): Promise<PolicyFeedbackSummary> {
+  return apiFetch<PolicyFeedbackSummary>("/policy/feedback-summary", { role });
 }
 
 /**
