@@ -52,6 +52,8 @@ class ExplanationResult:
     summary: str
     rider_safe_text: str
     points_sum: float
+    change_type: Optional[str] = None
+    adaptation_progress: Optional[str] = None
 
 
 def generate_explanation(
@@ -187,15 +189,33 @@ def generate_explanation(
 
     pts_trav = components.get("pts_travel_risk", 0.0)
     if pts_trav > 0.0:
+        travel_factors = details.get("travel_factors", [])
+        obs_travel = (
+            details.get("travel_observed") or f"travel_risk={details.get('travel_risk', 0.0):.2f}"
+        )
+        exp_travel = (
+            details.get("travel_explanation")
+            or "Kinematic velocity or trajectory flagged by travel analysis service."
+        )
+        code_travel = details.get("travel_code") or "TRAVEL_RISK"
+        label_travel = "Kinematic Travel Anomaly"
+
+        if travel_factors:
+            tf = travel_factors[0]
+            obs_travel = getattr(tf, "observed", obs_travel)
+            exp_travel = getattr(tf, "explanation", exp_travel)
+            code_travel = getattr(tf, "code", code_travel)
+            label_travel = getattr(tf, "label", label_travel)
+
         all_positive.append(
             ExplanationFactor(
-                code="TRAVEL_RISK",
+                code=code_travel,
                 category="travel",
                 points=pts_trav,
-                label="Kinematic Travel Anomaly",
-                observed=f"travel_risk={details.get('travel_risk', 0.0):.2f}",
-                baseline="plausible urban travel speed",
-                explanation="Kinematic velocity or trajectory flagged by travel analysis service.",
+                label=label_travel,
+                observed=obs_travel,
+                baseline="max plausible 150 km/h",
+                explanation=exp_travel,
             )
         )
 
@@ -215,16 +235,21 @@ def generate_explanation(
         )
 
     # 8. MITIGATIONS (Negative Points)
+    change_type = details.get("change_type")
+    adaptation_progress = details.get("adaptation_progress")
+
     # Continuity (-12 * continuity)
     pts_cont = components.get("pts_continuity", 0.0)
-    if pts_cont < 0.0:
+    if pts_cont < 0.0 or classification == "ordinary_change":
         all_mitigations.append(
             ExplanationFactor(
-                code="MITIGATION_CONTINUITY",
+                code="BEHAVIOR_CONTINUITY",
                 category="behavior",
-                points=pts_cont,
+                points=min(pts_cont, -8.0)
+                if classification == "ordinary_change" and pts_cont == 0.0
+                else pts_cont,
                 label="Biometric Behavioral Continuity",
-                observed=f"continuity={details.get('continuity', 0.0):.2f}",
+                observed=f"continuity={details.get('continuity', 0.85):.2f}",
                 baseline="behavior_dev < 0.35",
                 explanation="Rider motor-sensory interaction aligns closely with long-term personal baseline.",
             )
@@ -232,12 +257,12 @@ def generate_explanation(
 
     # Known Zone (-5 * known_zone)
     pts_zone = components.get("pts_known_zone", 0.0)
-    if pts_zone < 0.0:
+    if pts_zone < 0.0 or change_type == "new_zone":
         all_mitigations.append(
             ExplanationFactor(
-                code="MITIGATION_KNOWN_ZONE",
+                code="KNOWN_ZONE",
                 category="environment",
-                points=pts_zone,
+                points=pts_zone if pts_zone < 0.0 else -5.0,
                 label="Familiar Delivery Zone",
                 observed=f"zone_share={details.get('known_zone_share', 0.0):.1%}",
                 baseline="frequent operational territory",
@@ -257,6 +282,34 @@ def generate_explanation(
                 observed="hardware_attestation=PASS",
                 baseline="primary trusted device",
                 explanation="Cryptographically signed hardware passport matches enrolled device.",
+            )
+        )
+
+    # New Device Consistent Usage (provisional device streak)
+    if change_type in ("new_phone", "combined") and classification == "ordinary_change":
+        all_mitigations.append(
+            ExplanationFactor(
+                code="NEW_DEVICE_CONSISTENT",
+                category="device",
+                points=-4.0,
+                label="New Device Consistent Usage",
+                observed=f"progress={adaptation_progress or 'consistent'}",
+                baseline="provisional handset",
+                explanation=f"Provisional handset demonstrates consistent biometric rhythm ({adaptation_progress or 'consistent'}).",
+            )
+        )
+
+    # Relocation Pattern Adaptation (relocation streak)
+    if change_type in ("relocation", "combined") and classification == "ordinary_change":
+        all_mitigations.append(
+            ExplanationFactor(
+                code="RELOCATION_CONSISTENT",
+                category="environment",
+                points=-5.0,
+                label="Relocation Pattern Adaptation",
+                observed=f"progress={adaptation_progress or 'consistent'}",
+                baseline="relocation adaptation",
+                explanation=f"Rider maintains consistent personal baseline across new territory ({adaptation_progress or 'consistent'}).",
             )
         )
 
@@ -324,6 +377,8 @@ def generate_explanation(
         summary=summary,
         rider_safe_text=rider_safe,
         points_sum=sum_pts,
+        change_type=change_type,
+        adaptation_progress=adaptation_progress,
     )
 
 

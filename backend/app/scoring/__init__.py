@@ -1,7 +1,7 @@
 """TrustJuggler Scoring Package.
 
 Exposes real-time multi-modal risk scoring, feature extractors, anomaly detection,
-rule hooks, explainability decomposition, and threshold configurations.
+rule hooks, explainability decomposition, threshold configurations, and kinematic travel analysis.
 """
 
 from app.scoring.anomaly import (
@@ -48,6 +48,18 @@ from app.scoring.rules import (
     evaluate_rules,
 )
 from app.scoring.thresholds import DEFAULT_THRESHOLDS, ThresholdConfig
+from app.scoring.travel import (
+    JumpResult,
+    RoutePlausibilityResult,
+    SpeedResult,
+    TravelAssessment,
+    evaluate_travel,
+    gps_jump,
+    haversine,
+    implied_speed,
+    route_plausibility,
+    zone_feasibility,
+)
 
 __all__ = [
     "ScoringContext",
@@ -85,4 +97,14 @@ __all__ = [
     "extract_travel_risk",
     "extract_graph_risk",
     "extract_trust_health",
+    "haversine",
+    "implied_speed",
+    "gps_jump",
+    "route_plausibility",
+    "zone_feasibility",
+    "evaluate_travel",
+    "TravelAssessment",
+    "SpeedResult",
+    "JumpResult",
+    "RoutePlausibilityResult",
 ]

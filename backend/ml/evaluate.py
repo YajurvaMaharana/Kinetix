@@ -29,10 +29,9 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from app.scoring.thresholds import DEFAULT_THRESHOLDS, ThresholdConfig  # noqa: E402
-
 from app.scoring.anomaly import score_anomaly  # noqa: E402
 from app.scoring.risk import ScoringContext, score_session  # noqa: E402
+from app.scoring.thresholds import DEFAULT_THRESHOLDS, ThresholdConfig  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("trustjuggler.ml.evaluate")

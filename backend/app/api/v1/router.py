@@ -35,6 +35,7 @@ from app.schemas.contracts import (
     DevicePassportResponse,
     DeviceResponse,
     FactorSchema,
+    InvestigationPayload,
     MetricsSummaryResponse,
     RiderResponse,
     SessionCreateRequest,
@@ -359,6 +360,19 @@ async def respond_to_challenge(
             session.current_verdict = "ALLOW"
             session.current_risk_score = 15.0
             new_verdict = "ALLOW"
+
+            # If rider baseline exists and device was provisional/new, mark trusted via OTP
+            from app.models.entities import Device, RiderBaseline
+            from app.services.baseline_service import baseline_service
+
+            baseline = (
+                db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+            )
+            if baseline and session.device_id:
+                dev = db.query(Device).filter(Device.id == session.device_id).first()
+                if dev:
+                    dev.trust_rating = 1.0
+                    baseline_service.handle_otp_passed(baseline, dev.fingerprint)
         else:
             session.status = "TERMINATED"
             session.current_verdict = "ESCALATE"
@@ -691,6 +705,49 @@ async def update_case(
         created_at=c.created_at.isoformat(),
         updated_at=c.updated_at.isoformat(),
     )
+
+
+# ==============================================================================
+# 5b. Fraud Investigation Payloads
+# ==============================================================================
+@api_router.get(
+    "/sessions/{session_id}/investigation",
+    response_model=InvestigationPayload,
+    tags=["Investigation"],
+)
+async def get_session_investigation(session_id: str, db: Session = Depends(get_db)):
+    """
+    Returns complete fraud investigation payload for a session,
+    including change_type and adaptation_progress.
+    """
+    try:
+        return session_service.get_investigation_payload(db, session_id)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{session_id}' not found"
+        ) from None
+
+
+@api_router.get(
+    "/cases/{case_id}/investigation",
+    response_model=InvestigationPayload,
+    tags=["Investigation"],
+)
+async def get_case_investigation(case_id: str, db: Session = Depends(get_db)):
+    """
+    Returns investigation payload for an active security case.
+    """
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Case '{case_id}' not found"
+        )
+    if not case.session_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Case '{case_id}' has no associated session",
+        )
+    return session_service.get_investigation_payload(db, case.session_id)
 
 
 # ==============================================================================

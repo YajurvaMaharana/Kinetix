@@ -165,15 +165,88 @@ class SessionService:
         baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == req.rider_id).first()
         policy = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
 
+        # Query previous session's last location
+        prev_session = (
+            db.query(SessionModel)
+            .filter(SessionModel.rider_id == req.rider_id, SessionModel.id != session.id)
+            .order_by(SessionModel.created_at.desc())
+            .first()
+        )
+        previous_location = None
+        if prev_session:
+            last_ev = (
+                db.query(SessionEvent)
+                .filter(
+                    SessionEvent.session_id == prev_session.id,
+                    SessionEvent.event_type == "location_ping",
+                )
+                .order_by(SessionEvent.created_at.desc())
+                .first()
+            )
+            if last_ev:
+                try:
+                    previous_location = json.loads(last_ev.payload_json)
+                    if (
+                        isinstance(previous_location, dict)
+                        and "created_at" not in previous_location
+                    ):
+                        previous_location["created_at"] = last_ev.created_at.isoformat()
+                except Exception:
+                    pass
+
+        # Extract initial pings if available in request
+        init_pings = []
+        if hasattr(req, "location") and req.location:
+            init_pings.append(
+                req.location.model_dump() if hasattr(req.location, "model_dump") else req.location
+            )
+
         ctx = ScoringContext(
             request_or_event=req,
             baseline=baseline,
             device_passport=device,
             active_policy=policy,
+            location_pings=init_pings if init_pings else None,
+            previous_location=previous_location,
+        )
+
+        # Check if rider has open case
+        has_open_case = (
+            db.query(Case)
+            .filter(Case.rider_id == req.rider_id, Case.status.in_(["OPEN", "IN_REVIEW"]))
+            .count()
+            > 0
         )
 
         # Score exclusively through interface in app/scoring/risk.py
         scored = score_session(ctx)
+
+        # Process gradual baseline adaptation
+        from app.services.baseline_service import baseline_service
+
+        session_info = (
+            req.model_dump()
+            if hasattr(req, "model_dump")
+            else (req if isinstance(req, dict) else {})
+        )
+        session_info["session_id"] = session.id
+        session_info["device_id"] = device.id
+        session_info["device_token"] = raw_fingerprint
+
+        adaptation_res = baseline_service.process_session_adaptation(
+            baseline=baseline,
+            session_info=session_info,
+            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0
+            if scored.components.get("pts_behavior")
+            else 0.15,
+            rule_matches=[f for f in scored.factors if f.category.lower() == "rule"],
+            rule_floor=75.0 if scored.classification == "suspected_handoff" else 0.0,
+            graph_risk=scored.components.get("pts_graph_risk", 0.0) / 12.0,
+            has_open_case=has_open_case,
+            timestamp=session.created_at,
+        )
+        if "new_phone" in adaptation_res.adapted_components:
+            device.trust_rating = 1.0
 
         # 4. Save RiskAssessment & Factors
         assessment_id = f"eval_{uuid.uuid4().hex[:8]}"
@@ -285,6 +358,8 @@ class SessionService:
             case_id=case_id,
             latency_ms=scored.latency_ms,
             evaluated_at=assessment.created_at.isoformat(),
+            change_type=adaptation_res.change_type or scored.change_type,
+            adaptation_progress=adaptation_res.adaptation_progress or scored.adaptation_progress,
         )
 
         # Publish to SSE EventBus
@@ -333,13 +408,92 @@ class SessionService:
         )
         policy = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
 
+        # Query the last N location pings (from session_events)
+        recent_pings_events = (
+            db.query(SessionEvent)
+            .filter(
+                SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping"
+            )
+            .order_by(SessionEvent.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        location_pings = []
+        for pe in reversed(recent_pings_events):
+            try:
+                p_data = json.loads(pe.payload_json)
+                if isinstance(p_data, dict):
+                    if "created_at" not in p_data and "timestamp" not in p_data:
+                        p_data["created_at"] = pe.created_at.isoformat()
+                    location_pings.append(p_data)
+            except Exception:
+                pass
+
+        # Query previous session's last location
+        prev_session = (
+            db.query(SessionModel)
+            .filter(SessionModel.rider_id == session.rider_id, SessionModel.id != session.id)
+            .order_by(SessionModel.created_at.desc())
+            .first()
+        )
+        previous_location = None
+        if prev_session:
+            last_ev = (
+                db.query(SessionEvent)
+                .filter(
+                    SessionEvent.session_id == prev_session.id,
+                    SessionEvent.event_type == "location_ping",
+                )
+                .order_by(SessionEvent.created_at.desc())
+                .first()
+            )
+            if last_ev:
+                try:
+                    previous_location = json.loads(last_ev.payload_json)
+                    if (
+                        isinstance(previous_location, dict)
+                        and "created_at" not in previous_location
+                    ):
+                        previous_location["created_at"] = last_ev.created_at.isoformat()
+                except Exception:
+                    pass
+
+        # Check if rider has open case
+        has_open_case = (
+            db.query(Case)
+            .filter(Case.rider_id == session.rider_id, Case.status.in_(["OPEN", "IN_REVIEW"]))
+            .count()
+            > 0
+        )
+
         ctx = ScoringContext(
             request_or_event={"event_type": event_type, **payload},
             baseline=baseline,
             device_passport=device,
             active_policy=policy,
+            location_pings=location_pings if location_pings else None,
+            previous_location=previous_location,
+            previous_risk_score=session.current_risk_score,
         )
         scored = score_session(ctx)
+
+        from app.services.baseline_service import baseline_service
+
+        event_session_info = {"event_type": event_type, **payload}
+        event_session_info["session_id"] = session.id
+        event_session_info["device_id"] = device.id if device else None
+        adaptation_res = baseline_service.process_session_adaptation(
+            baseline=baseline,
+            session_info=event_session_info,
+            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0
+            if scored.components.get("pts_behavior")
+            else 0.15,
+            rule_matches=[f for f in scored.factors if f.category.lower() == "rule"],
+            rule_floor=75.0 if scored.classification == "suspected_handoff" else 0.0,
+            graph_risk=scored.components.get("pts_graph_risk", 0.0) / 12.0,
+            has_open_case=has_open_case,
+            timestamp=ev.created_at,
+        )
 
         # 3. Persist new assessment
         assessment_id = f"eval_{uuid.uuid4().hex[:8]}"
@@ -464,6 +618,51 @@ class SessionService:
             case_id=case_id,
             latency_ms=scored.latency_ms,
             evaluated_at=assessment.created_at.isoformat(),
+            change_type=adaptation_res.change_type or scored.change_type,
+            adaptation_progress=adaptation_res.adaptation_progress or scored.adaptation_progress,
+        )
+
+    @classmethod
+    def get_investigation_payload(cls, db: Session, session_id: str) -> Dict[str, Any]:
+        """
+        Builds complete investigation payload for analyst review.
+        Includes change_type and adaptation_progress.
+        """
+        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if not session:
+            raise KeyError(f"Session '{session_id}' not found")
+
+        assessment = (
+            db.query(RiskAssessment)
+            .filter(RiskAssessment.session_id == session.id)
+            .order_by(RiskAssessment.created_at.desc())
+            .first()
+        )
+        baseline = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        )
+
+        from app.services.baseline_service import baseline_service
+
+        change_type, progress = baseline_service.detect_change_type(
+            {
+                "session_id": session.id,
+                "rider_id": session.rider_id,
+                "device_id": session.device_id,
+            },
+            cfg=None,
+        )
+
+        factors = assessment.factors if assessment else []
+        return baseline_service.assemble_investigation_payload(
+            session_id=session.id,
+            rider_id=session.rider_id,
+            verdict=session.current_verdict,
+            risk_score=session.current_risk_score,
+            threat_tags=[],
+            factors=factors,
+            mitigating_factors=[],
+            baseline=baseline,
         )
 
 

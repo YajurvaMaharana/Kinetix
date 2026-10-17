@@ -203,21 +203,49 @@ def behavior_deviation(
     # Check cold start
     is_cold_start = (baseline is None) or (sessions_count < cfg.cold_start_session_threshold)
 
+    # Check adaptation state for trusted status and per-device metrics
+    adapt_raw = base_dict.get("adaptation_state_json") or base_dict.get("adaptation_state") or {}
+    if isinstance(adapt_raw, str):
+        try:
+            adapt_state = json.loads(adapt_raw)
+        except Exception:
+            adapt_state = {}
+    elif isinstance(adapt_raw, dict):
+        adapt_state = adapt_raw
+    else:
+        adapt_state = {}
+
+    dev_token = (
+        req_dict.get("device_token") or dev_info.get("fingerprint") or req_dict.get("device_id")
+    )
+    dev_adapt = adapt_state.get("new_device", {})
+    is_trusted_via_adaptation = bool(
+        dev_adapt.get("trusted")
+        and (not dev_token or dev_adapt.get("token") == dev_token or dev_adapt.get("token") is None)
+    )
+
     # Check whether device is new
     is_new_device = bool(
-        req_dict.get("is_new_device")
-        or dev_info.get("is_new_device")
-        or (
-            "ORDINARY_CHANGE" in str(req_dict.get("threat_tags", ""))
-            and "new_phone" in str(req_dict.get("session_id", ""))
+        (
+            req_dict.get("is_new_device")
+            or dev_info.get("is_new_device")
+            or dev_info.get("is_new")
+            or (
+                "ORDINARY_CHANGE" in str(req_dict.get("threat_tags", ""))
+                and "new_phone" in str(req_dict.get("session_id", ""))
+            )
+            or ("newphone" in str(req_dict.get("device_id", "")).lower())
+            or ("combo" in str(req_dict.get("device_id", "")).lower())
+            or (
+                isinstance(getattr(ctx, "device_passport", None), dict)
+                and getattr(ctx, "device_passport", {}).get("is_new")
+            )
         )
-        or ("newphone" in str(req_dict.get("device_id", "")).lower())
-        or ("combo" in str(req_dict.get("device_id", "")).lower())
-        or (
-            isinstance(getattr(ctx, "device_passport", None), dict)
-            and getattr(ctx, "device_passport", {}).get("is_new")
-        )
+        and not (dev_info.get("is_trusted") or is_trusted_via_adaptation)
     )
+
+    per_dev_stats = adapt_state.get("per_device_stats", {})
+    dev_specific_metrics = per_dev_stats.get(dev_token, {}) if dev_token else {}
 
     metric_records: Dict[str, MetricRecord] = {}
     metric_devs: Dict[str, float] = {}
@@ -227,8 +255,12 @@ def behavior_deviation(
 
     # 10 Behavior Metrics
     for m in cfg.metric_weights.keys():
-        # Baseline median & MAD
-        if not is_cold_start and m in base_metrics:
+        # Baseline median & MAD (use per-device metrics if available for adapted device)
+        if not is_cold_start and m in dev_specific_metrics:
+            m_stat = dev_specific_metrics[m]
+            med = float(m_stat.get("median", COHORT_DEFAULTS[m][0]))
+            mad = float(m_stat.get("mad", COHORT_DEFAULTS[m][1]))
+        elif not is_cold_start and m in base_metrics:
             m_stat = base_metrics[m]
             med = float(m_stat.get("median", COHORT_DEFAULTS[m][0]))
             mad = float(m_stat.get("mad", COHORT_DEFAULTS[m][1]))
@@ -342,16 +374,40 @@ def environment_change(
     )
     base_dict = _extract_dict(getattr(ctx, "baseline", None))
 
+    # Check adaptation state
+    adapt_raw = base_dict.get("adaptation_state_json") or base_dict.get("adaptation_state") or {}
+    if isinstance(adapt_raw, str):
+        try:
+            adapt_state = json.loads(adapt_raw)
+        except Exception:
+            adapt_state = {}
+    elif isinstance(adapt_raw, dict):
+        adapt_state = adapt_raw
+    else:
+        adapt_state = {}
+
+    dev_token = (
+        req_dict.get("device_token") or dev_dict.get("fingerprint") or req_dict.get("device_id")
+    )
+    dev_adapt = adapt_state.get("new_device", {})
+    is_trusted_via_adaptation = bool(
+        dev_adapt.get("trusted")
+        and (not dev_token or dev_adapt.get("token") == dev_token or dev_adapt.get("token") is None)
+    )
+
     total_env = 0.0
 
     # 1. New Device (0.35)
     is_new_dev = bool(
-        req_dict.get("is_new_device")
-        or dev_dict.get("is_new_device")
-        or dev_dict.get("is_new")
-        or ("new_phone" in str(req_dict.get("session_id", "")))
-        or ("newphone" in str(req_dict.get("device_id", "")).lower())
-        or ("combo" in str(req_dict.get("device_id", "")).lower())
+        (
+            req_dict.get("is_new_device")
+            or dev_dict.get("is_new_device")
+            or dev_dict.get("is_new")
+            or ("new_phone" in str(req_dict.get("session_id", "")))
+            or ("newphone" in str(req_dict.get("device_id", "")).lower())
+            or ("combo" in str(req_dict.get("device_id", "")).lower())
+        )
+        and not (dev_dict.get("is_trusted") or is_trusted_via_adaptation)
     )
     if is_new_dev:
         total_env += cfg.w_env_new_device
@@ -359,8 +415,17 @@ def environment_change(
     # 2. City Change (0.30, 0.5x if adjacent)
     curr_city = str(req_dict.get("city") or "").strip().lower()
     home_city = str(base_dict.get("home_city") or req_dict.get("home_city") or "").strip().lower()
+    usual_cities = [str(c).strip().lower() for c in base_dict.get("usual_cities", [])]
+    if not usual_cities and adapt_state.get("usual_cities"):
+        usual_cities = [str(c).strip().lower() for c in adapt_state.get("usual_cities", [])]
 
-    if "relocation" in str(req_dict.get("session_id", "")):
+    is_adapted_city = bool(curr_city and curr_city in usual_cities)
+
+    if is_adapted_city or (curr_city and home_city and curr_city == home_city):
+        pass
+    elif "relocation" in str(req_dict.get("session_id", "")) and not adapt_state.get(
+        "new_city", {}
+    ).get("adapted"):
         total_env += cfg.w_env_new_city
     elif curr_city and home_city and curr_city != home_city:
         if (curr_city, home_city) in ADJACENT_CITIES:
@@ -378,11 +443,17 @@ def environment_change(
             zone_profile = {}
 
     known_zones = {str(z).strip().lower() for z in zone_profile.keys()}
+    is_adapted_zone = bool(
+        adapt_state.get("new_zone", {}).get("adapted")
+        and adapt_state.get("new_zone", {}).get("zone") == curr_zone
+    )
 
-    if (
+    if is_adapted_zone:
+        pass
+    elif (
         "new_zone" in str(req_dict.get("session_id", ""))
         or "combo" in str(req_dict.get("device_id", "")).lower()
-    ):
+    ) and not is_adapted_zone:
         total_env += cfg.w_env_new_zone
     elif curr_zone and known_zones and curr_zone not in known_zones:
         # Check if adjacent to any known zone
@@ -518,11 +589,37 @@ def known_zone_share(zone_id: Optional[str], baseline: Optional[Any]) -> float:
     return round(float(min(1.0, max(0.0, share))), 4)
 
 
-def trusted_device_signal(device: Optional[Any], is_new_device: bool = False) -> float:
+def trusted_device_signal(
+    device: Optional[Any],
+    is_new_device: bool = False,
+    baseline: Optional[Any] = None,
+) -> float:
     """
-    Returns 1.0 if the hardware passport certifies a long-standing, non-rooted, non-emulator device.
+    Returns 1.0 if the hardware passport certifies a long-standing, non-rooted, non-emulator device,
+    or if the handset has graduated through gradual baseline adaptation.
     """
-    if device is None or is_new_device:
+    if is_new_device:
+        return 0.0
+
+    if baseline is not None:
+        base_dict = _extract_dict(baseline)
+        adapt_raw = (
+            base_dict.get("adaptation_state_json") or base_dict.get("adaptation_state") or {}
+        )
+        if isinstance(adapt_raw, str):
+            try:
+                adapt_st = json.loads(adapt_raw)
+            except Exception:
+                adapt_st = {}
+        elif isinstance(adapt_raw, dict):
+            adapt_st = adapt_raw
+        else:
+            adapt_st = {}
+
+        if adapt_st.get("new_device", {}).get("trusted"):
+            return 1.0
+
+    if device is None:
         return 0.0
 
     dev_dict = _extract_dict(device)
