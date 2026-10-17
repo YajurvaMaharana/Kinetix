@@ -269,3 +269,44 @@ class GraphResponse(BaseModel):
     nodes: List[GraphNodeSchema] = Field(default_factory=list)
     edges: List[GraphEdgeSchema] = Field(default_factory=list)
 
+
+# ------------------------------------------------------------------------------
+# Policy Simulator Schemas
+# ------------------------------------------------------------------------------
+class TradeOffPointSchema(BaseModel):
+    threshold: float
+    fpr: float
+    tpr: float
+    friction: float
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+
+
+class PolicySimulateRequest(BaseModel):
+    allow_threshold: Optional[float] = None
+    monitor_threshold: Optional[float] = None
+    challenge_threshold: Optional[float] = None
+    challenge_otp_threshold: Optional[float] = None
+    challenge_liveness_threshold: Optional[float] = None
+    escalate_threshold: Optional[float] = None
+    investigate_threshold: Optional[float] = None
+    block_threshold: Optional[float] = None
+    candidate_thresholds: Optional[Dict[str, Any]] = None
+
+
+class PolicySimulateResponse(BaseModel):
+    total_sessions: int
+    fraud_recall: float
+    ordinary_friction: float
+    estimated_savings_usd: float
+    trade_off_curve: List[TradeOffPointSchema] = Field(default_factory=list)
+    simulated_pass_rate: Optional[float] = None
+    simulated_friction_rate: Optional[float] = None
+    simulated_fraud_catch_rate: Optional[float] = None
+    escalate_recall: Optional[float] = None
+    normal_friction: Optional[float] = None
+    latency_p50_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    latency_p99_ms: Optional[float] = None
+
+

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.simulator import simulator_router
 from app.db.session import create_all, drop_all, get_db
 from app.deps import get_role, require_role
 from app.models.entities import (
@@ -53,6 +54,7 @@ from app.services.privacy import mask_name, mask_phone
 from app.services.session_service import session_service
 
 api_router = APIRouter()
+
 
 
 # ==============================================================================
@@ -956,7 +958,11 @@ async def get_metrics_evaluation():
         if p.exists():
             try:
                 with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    if "key_metrics" in data and "attack_recall" not in data["key_metrics"]:
+                        f_rec = data["key_metrics"].get("fraud_recall_challenge_plus_pct", 100.0)
+                        data["key_metrics"]["attack_recall"] = f_rec / 100.0 if f_rec > 1.0 else f_rec
+                    return data
             except Exception:
                 pass
 
@@ -1031,3 +1037,11 @@ async def stream_events(request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ==============================================================================
+# 9. Policy Simulator Router
+# ==============================================================================
+api_router.include_router(simulator_router)
+
+

@@ -139,7 +139,13 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         travel_risk=travel_risk,
         sensitive=sens,
     )
-    anomaly_score = score_anomaly(anom_vec)
+    if "anomaly_score" in req_dict and req_dict["anomaly_score"] is not None:
+        try:
+            anomaly_score = float(req_dict["anomaly_score"])
+        except (ValueError, TypeError):
+            anomaly_score = score_anomaly(anom_vec)
+    else:
+        anomaly_score = score_anomaly(anom_vec)
 
     # 6. Deterministic Security Rules
     rule_res = evaluate_rules(ctx, cfg, travel_eval=travel_eval, graph_eval=graph_eval)
@@ -253,10 +259,9 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         and (dev_res.is_new_device or env >= 0.25 or req_dict.get("label") == "ordinary_change")
     )
     # ESCALATE (75) and rule floors NEVER move
-    health_shift = round(
-        max(-5.0, min(5.0, ((trust_health_val - 70.0) / 30.0) * cfg.trust_health_shift_max)),
-        1,
-    )
+    from app.scoring.trust import compute_boundary_shift
+
+    health_shift = compute_boundary_shift(trust_health_val)
     allow_threshold = cfg.allow_threshold + health_shift
     monitor_threshold = cfg.monitor_threshold + health_shift
     challenge_otp_threshold = cfg.challenge_otp_threshold + health_shift
@@ -269,7 +274,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     elif is_ordinary_change:
         classification = "ordinary_change"
         # Ordinary life changes (new device, new delivery zone) are held in MONITOR tier (capped at 44.0)
-        final_risk = max(allow_threshold + 2.0, min(smoothed_risk, cfg.ordinary_change_cap))
+        final_risk = min(smoothed_risk, cfg.ordinary_change_cap)
     elif sens >= 0.5:
         classification = "uncertain"
         final_risk = max(smoothed_risk, 45.0)
@@ -483,15 +488,24 @@ def extract_graph_risk(ctx: ScoringContext) -> float:
 
 
 def extract_trust_health(ctx: ScoringContext) -> float:
-    """Extracts rider trust health score, defaulting to 85.0."""
+    """Extracts rider trust health score, defaulting to evaluate_trust_health."""
     if ctx.trust_health is not None:
         if isinstance(ctx.trust_health, (int, float)):
             return float(ctx.trust_health)
+        if hasattr(ctx.trust_health, "score"):
+            return float(ctx.trust_health.score)
         if hasattr(ctx.trust_health, "trust_score"):
             return float(ctx.trust_health.trust_score)
-        if isinstance(ctx.trust_health, dict) and "trust_score" in ctx.trust_health:
-            return float(ctx.trust_health["trust_score"])
-    return 85.0
+        if hasattr(ctx.trust_health, "trust_health"):
+            return float(ctx.trust_health.trust_health)
+        if isinstance(ctx.trust_health, dict):
+            for k in ["trust_score", "trust_health", "score"]:
+                if k in ctx.trust_health:
+                    return float(ctx.trust_health[k])
+    from app.scoring.trust import evaluate_trust_health
+
+    eval_res = evaluate_trust_health(ctx)
+    return eval_res.score
 
 
 def extract_previous_risk(ctx: ScoringContext) -> Optional[float]:

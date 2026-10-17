@@ -54,4 +54,22 @@ __all__ = [
     "make_impossible_travel",
     "make_fraud_ring",
     "make_payout_hijack",
+    "simulate_policy",
+    "load_eval_dataset",
+    "sweep_thresholds",
+    "sweep_boundary_matrix",
+    "evaluate_records_under_thresholds",
+    "SimulationMetrics",
+    "SessionEvalRecord",
 ]
+
+from simulator.policy_sim import (
+    SessionEvalRecord,
+    SimulationMetrics,
+    evaluate_records_under_thresholds,
+    load_eval_dataset,
+    simulate_policy,
+    sweep_boundary_matrix,
+    sweep_thresholds,
+)
+
