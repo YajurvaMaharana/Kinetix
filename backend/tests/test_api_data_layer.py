@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db.session import Base, get_db
 from app.main import app
@@ -10,19 +11,15 @@ from app.models.entities import Session as SessionModel
 from app.services.events_bus import event_bus
 from app.services.privacy import tokenize
 
-# In-memory SQLite for fast, isolated test execution
+# In-memory SQLite with StaticPool for isolated in-memory test execution
 TEST_DATABASE_URL = "sqlite:///:memory:"
 test_engine = create_engine(
-    TEST_DATABASE_URL, connect_args={"check_same_thread": False}, future=True
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    future=True,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine, future=True)
-
-
-@pytest.fixture(autouse=True)
-def setup_test_db():
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    Base.metadata.drop_all(bind=test_engine)
 
 
 def override_get_db():
@@ -33,7 +30,32 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest.fixture(autouse=True)
+def setup_test_db():
+    app.dependency_overrides[get_db] = override_get_db
+    Base.metadata.create_all(bind=test_engine)
+    db = TestingSessionLocal()
+    for rid in [
+        "rider_alice_01",
+        "rider_bob_01",
+        "rider_chlg_01",
+        "rider_esc_01",
+        "rider_priv_01",
+        "rider_audit_01",
+    ]:
+        r = Rider(
+            id=rid,
+            display_name=rid,
+            phone_number="+1-555-0100",
+            email=f"{rid}@example.com",
+            status="active",
+        )
+        db.add(r)
+    db.commit()
+    db.close()
+    yield
+    Base.metadata.drop_all(bind=test_engine)
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.anyio
@@ -127,6 +149,9 @@ async def test_404_handlers():
 
         r3 = await client.get("/riders/unknown_rider_999")
         assert r3.status_code == 404
+
+        r3b = await client.post("/sessions", json={"rider_id": "unknown_rider_999"})
+        assert r3b.status_code == 404
 
         r4 = await client.get("/cases/unknown_case_999")
         assert r4.status_code == 404

@@ -183,6 +183,9 @@ class ThresholdConfig:
         if policy_config_or_dict is None:
             return cfg
 
+        if isinstance(policy_config_or_dict, cls):
+            return policy_config_or_dict
+
         if isinstance(policy_config_or_dict, dict):
             for k, v in policy_config_or_dict.items():
                 if hasattr(cfg, k) and v is not None:

@@ -48,6 +48,7 @@ class RuleHit:
                 "FACE_MISMATCH": "ACCOUNT_HANDOFF",
                 "LIVENESS_FAILED": "ACCOUNT_HANDOFF",
                 "MULTI_ACCOUNT_DEVICE_RING": "FRAUD_RING",
+                "CHALLENGE_FAILED": "ACCOUNT_HANDOFF",
             }
             self.threat_tag = tag_map.get(self.code, "SECURITY_RULE_VIOLATION")
 
@@ -135,6 +136,11 @@ def evaluate_rules(
     )
     if hit_ring:
         hits.append(hit_ring)
+
+    # 7. CHALLENGE_FAILED (+25, floor 75)
+    hit_cf = check_challenge_failed(req_dict, cfg)
+    if hit_cf:
+        hits.append(hit_cf)
 
     total_points = sum(h.points for h in hits)
     max_floor = max([h.floor for h in hits], default=0.0)
@@ -415,6 +421,29 @@ def check_multi_account_device_ring(
             baseline="exclusive personal handset (shared_accounts <= 1)",
             explanation="Device hardware or payout account linked to multi-rider collusion ring.",
             threat_tag="FRAUD_RING",
+        )
+    return None
+
+
+def check_challenge_failed(
+    req_dict: Dict[str, Any],
+    cfg: ThresholdConfig,
+) -> Optional[RuleHit]:
+    """Flagged when challenge response fails explicitly (+25 points, floor 75)."""
+    is_failed = bool(
+        _bool_val(req_dict.get("challenge_failed"))
+        or "CHALLENGE_FAILED" in str(req_dict.get("threat_tags", ""))
+        or req_dict.get("event_type") == "challenge_failed"
+    )
+    if is_failed:
+        return RuleHit(
+            code="CHALLENGE_FAILED",
+            points=25.0,
+            floor=75.0,
+            observed="challenge_verification_failed",
+            baseline="successful challenge attestation",
+            explanation="Rider failed interactive step-up verification challenge.",
+            threat_tag="ACCOUNT_HANDOFF",
         )
     return None
 

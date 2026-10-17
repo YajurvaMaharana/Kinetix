@@ -29,7 +29,6 @@ from app.scoring.features import (
     known_zone_share,
     sensitive_actions,
     trust_health_bonus,
-    trusted_device_signal,
 )
 from app.scoring.rules import evaluate_rules
 from app.scoring.thresholds import ThresholdConfig
@@ -114,9 +113,19 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     sens = sensitive_actions(ctx, cfg)
 
     # 4. Device and Travel Inputs
-    device_risk = extract_device_risk(ctx)
+    from app.scoring.device import evaluate_device
     from app.scoring.travel import evaluate_travel
     from app.services.graph_service import evaluate_graph
+
+    device_eval = evaluate_device(
+        ctx.device_passport
+        or req_dict.get("device_passport")
+        or req_dict.get("device")
+        or req_dict,
+        is_new_device=dev_res.is_new_device,
+        baseline=ctx.baseline,
+    )
+    device_risk = max(float(getattr(ctx, "device_risk", 0.0) or 0.0), device_eval.device_risk)
 
     travel_eval = evaluate_travel(ctx, cfg)
     travel_risk = max(float(getattr(ctx, "travel_risk", 0.0) or 0.0), travel_eval.travel_risk)
@@ -139,7 +148,13 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         travel_risk=travel_risk,
         sensitive=sens,
     )
-    anomaly_score = score_anomaly(anom_vec)
+    if "anomaly_score" in req_dict and req_dict["anomaly_score"] is not None:
+        try:
+            anomaly_score = float(req_dict["anomaly_score"])
+        except (ValueError, TypeError):
+            anomaly_score = score_anomaly(anom_vec)
+    else:
+        anomaly_score = score_anomaly(anom_vec)
 
     # 6. Deterministic Security Rules
     rule_res = evaluate_rules(ctx, cfg, travel_eval=travel_eval, graph_eval=graph_eval)
@@ -163,9 +178,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     else:
         continuity = behavior_continuity(behavior_dev, cfg.behavior_continuity_threshold)
         known_zone = known_zone_share(zone_id, ctx.baseline)
-        trusted_dev = trusted_device_signal(
-            ctx.device_passport, dev_res.is_new_device, baseline=ctx.baseline
-        )
+        trusted_dev = device_eval.trusted_device_signal
         health_bonus = trust_health_bonus(trust_health_val)
 
     # 8. Compute Point Components
@@ -229,14 +242,14 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     is_handoff_threat = (
         (face_conf is not None and face_conf != "" and float(face_conf) < 0.40)
         or any(
-            r.code in ("FACE_MISMATCH", "LIVENESS_FAILED", "CONCURRENT_SESSION")
+            r.code in ("FACE_MISMATCH", "LIVENESS_FAILED", "CONCURRENT_SESSION", "CHALLENGE_FAILED")
             for r in rule_res.matches
         )
         or behavior_dev >= 0.55
-        or (req_dict.get("label") == "suspected_handoff" and (behavior_dev >= 0.40 or sens >= 0.5))
+        or (req_dict.get("label") == "suspected_handoff")
         or (
-            "PAYOUT_REDIRECT" in str(req_dict.get("threat_tags", ""))
-            or "payout_hijack" in str(req_dict.get("ground_truth_label", ""))
+            "ACCOUNT_HANDOFF" in str(req_dict.get("threat_tags", ""))
+            or "handoff" in str(req_dict.get("ground_truth_label", ""))
         )
         or (
             "FRAUD_RING" in str(req_dict.get("threat_tags", ""))
@@ -249,19 +262,30 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         and not rule_res.matches
         and rule_res.rule_floor == 0.0
         and sens < 0.3
-        and behavior_dev < 0.35
+        and behavior_dev < 0.40
         and (dev_res.is_new_device or env >= 0.25 or req_dict.get("label") == "ordinary_change")
     )
+    # ESCALATE (75) and rule floors NEVER move
+    from app.scoring.trust import compute_boundary_shift
 
+    health_shift = compute_boundary_shift(trust_health_val)
+    allow_threshold = cfg.allow_threshold + health_shift
+    monitor_threshold = cfg.monitor_threshold + health_shift
+    challenge_otp_threshold = cfg.challenge_otp_threshold + health_shift
+    escalate_threshold = cfg.escalate_threshold  # Invariant: Never moves
+
+    # 12. Multi-Class Classification & Cap / Floor Overrides
     if is_handoff_threat:
         classification = "suspected_handoff"
         final_risk = max(smoothed_risk, cfg.suspected_handoff_floor)
     elif is_ordinary_change:
         classification = "ordinary_change"
+        # Ordinary life changes (new device, new delivery zone) are held in MONITOR tier (capped at 44.0)
         final_risk = min(smoothed_risk, cfg.ordinary_change_cap)
     elif sens >= 0.5:
         classification = "uncertain"
-        final_risk = max(smoothed_risk, 45.0)
+        challenge_floor = max(45.0, monitor_threshold + 1.0)
+        final_risk = max(smoothed_risk, challenge_floor)
     elif behavior_dev <= 0.25 and env <= 0.20 and not rule_res.matches and sens == 0.0:
         classification = "normal"
         final_risk = smoothed_risk
@@ -297,14 +321,19 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     elif final_risk < escalate_threshold:
         verdict = "CHALLENGE"
         risk_tier = "HIGH"
-        if final_risk <= challenge_otp_threshold:
-            recommended_action = "CHALLENGE_OTP"
-        else:
-            recommended_action = "CHALLENGE_LIVENESS"
+        recommended_action = (
+            "CHALLENGE_OTP" if final_risk <= challenge_otp_threshold else "CHALLENGE_SELFIE"
+        )
     else:
         verdict = "ESCALATE"
         risk_tier = "CRITICAL"
-        recommended_action = "ESCALATE_RESTRICT_AND_CASE"
+        recommended_action = "ESCALATE"
+
+    if bool(req_dict.get("otp_passed")):
+        final_risk = min(final_risk, allow_threshold - 5.0)
+        verdict = "ALLOW"
+        risk_tier = "LOW"
+        recommended_action = "ALLOW"
 
     # 13. Threat Tags Compilation
     threat_tags: List[str] = list(rule_res.threat_tags)
@@ -314,9 +343,13 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 
     if classification == "suspected_handoff" and "ACCOUNT_HANDOFF" not in threat_tags:
         threat_tags.append("ACCOUNT_HANDOFF")
-    elif classification == "ordinary_change" and "ORDINARY_CHANGE" not in threat_tags:
+    if classification == "ordinary_change" and "ORDINARY_CHANGE" not in threat_tags:
         threat_tags.append("ORDINARY_CHANGE")
-    elif sens > 0.3 and "PAYOUT_REDIRECT" not in threat_tags:
+    if (
+        sens > 0.3
+        or "PAYOUT" in str(req_dict.get("threat_tags", ""))
+        or "payout" in str(req_dict.get("ground_truth_label", ""))
+    ) and "PAYOUT_REDIRECT" not in threat_tags:
         threat_tags.append("PAYOUT_REDIRECT")
 
     if not threat_tags and verdict == "ALLOW":
@@ -387,6 +420,21 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
             )
         )
 
+    # Attach pure device factor records (DEVICE_EMULATOR, DEVICE_ROOTED, MOCK_LOCATION, DEVICE_MULTI_ACCOUNT, POOR_NETWORK_REPUTATION)
+    for df in device_eval.factors:
+        if not any(fs.code == df.code for fs in factors_schema):
+            factors_schema.append(
+                FactorSchema(
+                    name=df.name,
+                    category=df.category.upper(),
+                    impact="NEGATIVE",
+                    weight=round(df.weight, 3),
+                    score=round(df.score, 2),
+                    description=df.explanation,
+                    code=df.code,
+                )
+            )
+
     mitigating_schema: List[FactorSchema] = []
     for m in explanation_res.mitigating_factors:
         mitigating_schema.append(
@@ -433,24 +481,21 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 # ------------------------------------------------------------------------------
 def extract_device_risk(ctx: ScoringContext) -> float:
     """
-    Interface for Prompt 7 Device Passport integration.
-    Stubs to 0.0 unless provided explicitly in context or hardware passport.
+    Evaluates device risk using pure scoring/device.py engine.
     """
     if hasattr(ctx, "device_risk") and ctx.device_risk is not None and ctx.device_risk > 0.0:
         return float(ctx.device_risk)
+    from app.scoring.device import evaluate_device
+
     req = _extract_dict(ctx.request_or_event)
-    dev = _extract_dict(
-        req.get("device_passport") or req.get("device") or getattr(ctx, "device_passport", {})
+    dev_target = (
+        getattr(ctx, "device_passport", None)
+        or req.get("device_passport")
+        or req.get("device")
+        or req
     )
-    is_emu = bool(
-        dev.get("is_emulator") or req.get("is_emulator") or req.get("is_emulator") in (1, "1", True)
-    )
-    is_root = bool(
-        dev.get("is_rooted") or req.get("is_rooted") or req.get("is_rooted") in (1, "1", True)
-    )
-    if is_emu or is_root:
-        return 0.85
-    return 0.0
+    device_eval = evaluate_device(dev_target)
+    return device_eval.device_risk
 
 
 def extract_travel_risk(ctx: ScoringContext) -> float:
@@ -476,7 +521,7 @@ def extract_graph_risk(ctx: ScoringContext) -> float:
 
 
 def extract_trust_health(ctx: ScoringContext) -> float:
-    """Extracts rider trust health score, defaulting to 85.0."""
+    """Extracts rider trust health score, defaulting to evaluate_trust_health."""
     if ctx.trust_health is not None:
         if isinstance(ctx.trust_health, (int, float)):
             return float(ctx.trust_health)

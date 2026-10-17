@@ -10,6 +10,14 @@ from app.scoring.anomaly import (
     load_isolation_forest,
     score_anomaly,
 )
+from app.scoring.device import (
+    DeviceAssessment,
+    DeviceFactorRecord,
+    DeviceRiskScore,
+    device_risk,
+    evaluate_device,
+    get_device_factors,
+)
 from app.scoring.explain import (
     ExplanationFactor,
     ExplanationResult,
@@ -70,6 +78,12 @@ from app.scoring.trust import (
 )
 
 __all__ = [
+    "calculate_trust_health",
+    "compute_boundary_shift",
+    "evaluate_trust_health",
+    "trust_health_tier",
+    "TrustHealthResult",
+    "TrustProfile",
     "ScoringContext",
     "score_session",
     "ScoredAssessment",
@@ -105,6 +119,12 @@ __all__ = [
     "extract_travel_risk",
     "extract_graph_risk",
     "extract_trust_health",
+    "device_risk",
+    "evaluate_device",
+    "get_device_factors",
+    "DeviceAssessment",
+    "DeviceFactorRecord",
+    "DeviceRiskScore",
     "haversine",
     "implied_speed",
     "gps_jump",

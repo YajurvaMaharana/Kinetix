@@ -34,6 +34,7 @@ class AssessmentSchema(BaseModel):
     trust_score: float = Field(description="100 - risk_score")
     verdict: str  # ALLOW, MONITOR, CHALLENGE, ESCALATE
     risk_tier: str  # LOW, MEDIUM, HIGH, CRITICAL
+    classification: Optional[str] = "normal"
     factors: List[FactorSchema] = Field(default_factory=list)
     threat_tags: List[str] = Field(default_factory=list)
     challenge: Optional[ChallengeSchema] = None
@@ -76,6 +77,8 @@ class DevicePassportInput(BaseModel):
     rooted_or_jailbroken: bool = False
     is_emulator: bool = False
     is_rooted: bool = False
+    is_new_device: bool = False
+    is_new: bool = False
 
     model_config = ConfigDict(extra="ignore")
 
@@ -91,6 +94,7 @@ class SessionCreateRequest(BaseModel):
     location: Optional[Dict[str, Any]] = None
     financial: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
+    is_new_device: bool = False
 
     model_config = ConfigDict(extra="ignore")
 
@@ -178,20 +182,55 @@ class DeviceResponse(BaseModel):
     app_version: Optional[str] = None
     is_emulator: bool
     is_rooted: bool
+    mock_location_seen: bool = False
+    network_reputation: float = 1.0
+    passport_score: float = 100.0
+    trust_level: str = "new"
+    linked_rider_count: int = 1
     trust_rating: float
     created_at: str
     last_seen_at: str
 
 
+class LinkedRiderInfo(BaseModel):
+    rider_id: str
+    display_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    is_primary: bool = False
+    first_used_at: str
+    last_used_at: str
+
+
+class DeviceRecentSession(BaseModel):
+    session_id: str
+    rider_id: str
+    status: str
+    risk_score: Optional[float] = None
+    verdict: Optional[str] = None
+    created_at: str
+
+
 class DevicePassportResponse(BaseModel):
     device_id: str
     tokenized_fingerprint: str
-    trust_rating: float
+    model: Optional[str] = None
+    os_version: Optional[str] = None
+    app_version: Optional[str] = None
     is_emulator: bool
     is_rooted: bool
-    associated_riders_count: int
+    mock_location_seen: bool = False
+    network_reputation: float = 1.0
+    passport_score: float = 100.0
+    trust_level: str = "new"
+    trust_rating: float = 1.0
+    associated_riders_count: int = 1
+    linked_rider_count: int = 1
     first_seen: str
     last_seen: str
+    passport: Optional[Dict[str, Any]] = None
+    linked_riders: List[LinkedRiderInfo] = Field(default_factory=list)
+    recent_sessions: List[DeviceRecentSession] = Field(default_factory=list)
+    risk_factors: List[FactorSchema] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------------------------
@@ -239,7 +278,11 @@ class MetricsSummaryResponse(BaseModel):
     total_challenges: int
     open_cases: int
     avg_latency_ms: float
+    p95_latency_ms: float = 0.0
     health_status: str
+    decision_counts: Dict[str, int] = Field(default_factory=dict)
+    classification_counts: Dict[str, int] = Field(default_factory=dict)
+    threat_tag_counts: Dict[str, int] = Field(default_factory=dict)
 
 
 # ------------------------------------------------------------------------------
@@ -260,3 +303,93 @@ class GraphEdgeSchema(BaseModel):
 class GraphResponse(BaseModel):
     nodes: List[GraphNodeSchema] = Field(default_factory=list)
     edges: List[GraphEdgeSchema] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------------------------
+# Policy Simulator Schemas
+# ------------------------------------------------------------------------------
+class TradeOffPointSchema(BaseModel):
+    threshold: float
+    fpr: float
+    tpr: float
+    friction: float
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+
+
+class PolicySimulateRequest(BaseModel):
+    allow_threshold: Optional[float] = None
+    monitor_threshold: Optional[float] = None
+    challenge_threshold: Optional[float] = None
+    challenge_otp_threshold: Optional[float] = None
+    challenge_liveness_threshold: Optional[float] = None
+    escalate_threshold: Optional[float] = None
+    investigate_threshold: Optional[float] = None
+    block_threshold: Optional[float] = None
+    candidate_thresholds: Optional[Dict[str, Any]] = None
+
+
+class PolicySimulateResponse(BaseModel):
+    total_sessions: int
+    fraud_recall: float
+    ordinary_friction: float
+    estimated_savings_usd: float
+    trade_off_curve: List[TradeOffPointSchema] = Field(default_factory=list)
+    simulated_pass_rate: Optional[float] = None
+    simulated_friction_rate: Optional[float] = None
+    simulated_fraud_catch_rate: Optional[float] = None
+    escalate_recall: Optional[float] = None
+    normal_friction: Optional[float] = None
+    latency_p50_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    latency_p99_ms: Optional[float] = None
+
+
+# ------------------------------------------------------------------------------
+# Attack & Scenario Runner Schemas
+# ------------------------------------------------------------------------------
+class ScenarioRunRequest(BaseModel):
+    scenario_id: str
+    emit_events: bool = True
+    session_id_prefix: Optional[str] = None
+
+
+class ScenarioStepResponse(BaseModel):
+    step_number: int
+    event_name: str
+    session_id: str
+    risk_score: float
+    raw_risk: float
+    verdict: str
+    risk_tier: str
+    classification: str
+    recommended_action: str
+    threat_tags: List[str] = Field(default_factory=list)
+    factors: List[Dict[str, Any]] = Field(default_factory=list)
+    mitigating_factors: List[Dict[str, Any]] = Field(default_factory=list)
+    adaptation_progress: Optional[str] = None
+    passed: bool = True
+    notes: Optional[str] = None
+
+
+class ScenarioRunResponse(BaseModel):
+    scenario_id: str
+    name: str
+    category: str
+    passed: bool
+    initial_verdict: str
+    final_verdict: str
+    initial_risk_score: float
+    final_risk_score: float
+    threat_tags: List[str] = Field(default_factory=list)
+    steps: List[ScenarioStepResponse] = Field(default_factory=list)
+    summary: str
+
+
+class ScenarioInfoResponse(BaseModel):
+    scenario_id: str
+    name: str
+    description: str
+    category: str
+    expected_verdict: str
+    expected_threat_tags: List[str] = Field(default_factory=list)
