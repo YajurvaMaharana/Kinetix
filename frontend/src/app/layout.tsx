@@ -17,14 +17,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100 antialiased`}>
-        <div className="flex min-h-screen flex-col">
+      <body className={`${inter.className} min-h-screen bg-[#080B12] text-[#e0e2ed] antialiased`}>
+        <div className="flex min-h-screen flex-col bg-[#080B12]">
           <Navigation />
-          <main className="flex-1 px-4 py-8 sm:px-6 md:px-8 max-w-7xl mx-auto w-full">
+          <main className="flex-1 px-3 py-6 sm:px-6 lg:px-8 max-w-[1600px] mx-auto w-full">
             {children}
           </main>
-          <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-500">
-            TrustJuggler v2.0 &bull; Continuous Identity &amp; Collusion Shield &bull; Internal Platform
+          <footer className="border-t border-slate-800/80 bg-[#080B12] py-4 text-center text-xs text-slate-500">
+            TrustJuggler v2.0 &bull; Continuous Identity &amp; Collusion Shield &bull; Security Operations Center
           </footer>
         </div>
       </body>
