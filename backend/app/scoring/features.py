@@ -226,7 +226,8 @@ def behavior_deviation(
 
     # Check whether device is new
     is_new_device = bool(
-        (
+        req_dict.get("is_new_device") is not False
+        and (
             req_dict.get("is_new_device")
             or dev_info.get("is_new_device")
             or dev_info.get("is_new")
@@ -399,7 +400,8 @@ def environment_change(
 
     # 1. New Device (0.35)
     is_new_dev = bool(
-        (
+        req_dict.get("is_new_device") is not False
+        and (
             req_dict.get("is_new_device")
             or dev_dict.get("is_new_device")
             or dev_dict.get("is_new")
