@@ -17,7 +17,6 @@ Unified handling pipeline:
 import json
 import time
 import uuid
-from datetime import timedelta
 from typing import Any, Dict, Optional, Tuple, Union
 
 from fastapi import HTTPException, status
@@ -26,7 +25,6 @@ from sqlalchemy.orm import Session
 from app.models.entities import (
     BehaviorSnapshot,
     Case,
-    Challenge,
     Device,
     DeviceRider,
     PayoutAccount,
@@ -45,6 +43,7 @@ from app.models.entities import (
 from app.schemas.contracts import (
     AssessmentSchema,
     ChallengeSchema,
+    FactorSchema,
     SessionCreateRequest,
     SessionEventRequest,
 )
@@ -275,7 +274,10 @@ class SessionService:
                 req_dict.get("is_new_device") or (dr_link is not None and not dr_link.is_primary)
             )
 
-            # Persist initial session record
+            # Persist initial session record with scrubbed raw_context_json
+            from app.services.privacy import scrub_raw_pii_dict
+
+            scrubbed_context = scrub_raw_pii_dict(req_dict)
             session = SessionModel(
                 id=sess_id,
                 rider_id=rider.id,
@@ -285,6 +287,7 @@ class SessionService:
                 ip_address=tokenized_ip,
                 current_risk_score=10.0,
                 current_verdict="ALLOW",
+                raw_context_json=json.dumps(scrubbed_context),
                 created_at=utcnow(),
                 updated_at=utcnow(),
             )
@@ -453,6 +456,20 @@ class SessionService:
             ip_address=session.ip_address if session else None,
         )
 
+        # Check Rider Consent (Storage & Purpose Limitation)
+        has_consent = bool(
+            getattr(rider, "consent_version", None) and getattr(rider, "consent_at", None)
+        )
+        if not has_consent:
+            # Minimal Feature Set Mode:
+            # Suppress fine-grained continuous motor metrics (typing, gyro, acceleration)
+            if "telemetry" in merged_req and isinstance(merged_req["telemetry"], dict):
+                merged_req["telemetry"]["acceleration_variance"] = 0.0
+                merged_req["telemetry"]["gyro_stability"] = 1.0
+            if "biometrics" in merged_req and isinstance(merged_req["biometrics"], dict):
+                merged_req["biometrics"]["typing_cadence_cpm"] = 200.0
+                merged_req["biometrics"]["typing_cps"] = 3.3
+
         ctx = ScoringContext(
             request_or_event=merged_req,
             baseline=baseline,
@@ -469,6 +486,33 @@ class SessionService:
 
         # 4. Pure Multi-Modal Scoring
         scored = score_session(ctx)
+
+        if not has_consent:
+            # Append transparent minimal feature set indicator
+            scored.factors.append(
+                FactorSchema(
+                    name="CONSENT_MINIMAL_MODE",
+                    code="CONSENT_MINIMAL_MODE",
+                    category="RULE",
+                    impact="NEUTRAL",
+                    weight=0.0,
+                    score=0.0,
+                    description="Continuous behavioral and biometric profiling suppressed due to missing rider privacy consent.",
+                )
+            )
+            has_hard_fraud = (
+                challenge_failed
+                or has_open_case
+                or any(
+                    getattr(f, "category", "") in ("rule", "device")
+                    and getattr(f, "score", 0.0) >= 40.0
+                    for f in scored.factors
+                )
+            )
+            if scored.risk_score > 59.0 and not has_hard_fraud:
+                scored.risk_score = 55.0
+                scored.verdict = "CHALLENGE"
+                scored.risk_tier = "MEDIUM"
 
         # Measure end-to-end latency in milliseconds (guarantee > 0.0)
         elapsed_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
@@ -559,15 +603,19 @@ class SessionService:
         )
         db.add(snapshot)
 
-        # 7. Persist SessionEvent
+        # 7. Persist SessionEvent with PII Scrubbed Payload
+        from app.services.privacy import scrub_raw_pii_dict
+
+        scrubbed_event_payload = scrub_raw_pii_dict(payload_data)
         event_record = SessionEvent(
             id=f"ev_{uuid.uuid4().hex[:8]}",
             session_id=session.id,
             event_type=event_type,
-            payload_json=json.dumps(payload_data),
+            payload_json=json.dumps(scrubbed_event_payload),
             created_at=utcnow(),
         )
         db.add(event_record)
+        session.raw_context_json = json.dumps(scrubbed_event_payload)
 
         # 8. Update Session state
         session.current_risk_score = scored.risk_score
@@ -579,39 +627,69 @@ class SessionService:
 
         # 9. Band Decisions: CHALLENGE, ESCALATE, and Payout Holds
         if scored.verdict == "CHALLENGE":
-            session.status = "CHALLENGED"
-            # Create challenge record
-            chlg_id = f"chlg_{uuid.uuid4().hex[:8]}"
-            expires = utcnow() + timedelta(minutes=5)
-            chlg_type = "OTP" if scored.recommended_action == "CHALLENGE_OTP" else "FACE_LIVENESS"
-            chlg = Challenge(
-                id=chlg_id,
-                session_id=session.id,
-                challenge_type=chlg_type,
-                status="PENDING",
-                expires_at=expires,
-                created_at=utcnow(),
-            )
-            db.add(chlg)
-            db.flush()
+            from app.services.stepup_service import stepup_service
 
-            challenge_schema = ChallengeSchema(
-                challenge_id=chlg.id,
-                session_id=session.id,
-                challenge_type=chlg.challenge_type,
-                status=chlg.status,
-                expires_at=expires.isoformat(),
-                created_at=chlg.created_at.isoformat(),
+            fin_dict = (
+                payload_data.get("financial", {})
+                if isinstance(payload_data.get("financial"), dict)
+                else {}
             )
-            audit_service.log(
-                db,
-                actor,
-                role,
-                "CREATE_CHALLENGE",
-                "challenge",
-                chlg.id,
-                f"Verdict: CHALLENGE ({chlg_type})",
+            rider_state = {
+                "payout_lock": bool(
+                    fin_dict.get("payout_account_changed")
+                    or payload_data.get("payout_account_changed")
+                ),
+                "is_new_device": is_new_device_for_rider,
+                "threat_tags": scored.threat_tags,
+            }
+            chlg, suppression_reason = stepup_service.create_or_suppress_challenge(
+                db=db,
+                session=session,
+                assessment=scored,
+                rider=rider,
+                rider_state=rider_state,
+                actor=actor,
+                role=role,
             )
+
+            if chlg:
+                challenge_schema = ChallengeSchema(
+                    challenge_id=chlg.id,
+                    session_id=session.id,
+                    rider_id=rider.id,
+                    challenge_type=chlg.challenge_type,
+                    status=chlg.status,
+                    level=chlg.level,
+                    reason_code=chlg.reason_code,
+                    cooldown_key=chlg.cooldown_key,
+                    suppression_reason=suppression_reason,
+                    expires_at=chlg.expires_at.isoformat(),
+                    created_at=chlg.created_at.isoformat(),
+                )
+
+                if suppression_reason:
+                    supp_factor = FactorSchema(
+                        name="Challenge Suppression",
+                        category="POLICY",
+                        impact="POSITIVE",
+                        weight=0.0,
+                        score=1.0,
+                        description=f"Challenge suppressed: {suppression_reason}",
+                        code="CHALLENGE_SUPPRESSED",
+                    )
+                    scored.factors.append(supp_factor)
+                    db.add(
+                        RiskFactor(
+                            id=f"factor_{uuid.uuid4().hex[:8]}",
+                            assessment_id=assessment.id,
+                            name=supp_factor.name,
+                            category=supp_factor.category,
+                            impact=supp_factor.impact,
+                            weight=supp_factor.weight,
+                            score=supp_factor.score,
+                            description=supp_factor.description,
+                        )
+                    )
 
         elif scored.verdict == "ESCALATE":
             session.status = "ESCALATED"

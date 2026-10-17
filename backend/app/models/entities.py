@@ -1,5 +1,6 @@
+import json
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -10,7 +11,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.session import Base
 
@@ -27,10 +28,19 @@ class Rider(Base):
     phone_number: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    consent_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
+
+    def __init__(self, **kwargs):
+        if "consent_version" not in kwargs:
+            kwargs["consent_version"] = "v1.0"
+        if "consent_at" not in kwargs and kwargs.get("consent_version"):
+            kwargs["consent_at"] = utcnow()
+        super().__init__(**kwargs)
 
     # Relationships
     sessions: Mapped[List["Session"]] = relationship("Session", back_populates="rider")
@@ -41,6 +51,8 @@ class Rider(Base):
     trust_score: Mapped[Optional["RiderTrustScore"]] = relationship(
         "RiderTrustScore", back_populates="rider", uselist=False
     )
+    challenges: Mapped[List["Challenge"]] = relationship("Challenge", back_populates="rider")
+    appeals: Mapped[List["Appeal"]] = relationship("Appeal", back_populates="rider")
 
 
 class FaceTemplate(Base):
@@ -51,9 +63,19 @@ class FaceTemplate(Base):
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
     template_version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
+    model_name: Mapped[str] = mapped_column(String(64), default="simulated", nullable=False)
     embedding_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     encrypted_embedding: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retention_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    @property
+    def template_encrypted(self) -> Optional[str]:
+        return self.encrypted_embedding
+
+    @template_encrypted.setter
+    def template_encrypted(self, val: Optional[str]) -> None:
+        self.encrypted_embedding = val
 
 
 class Device(Base):
@@ -72,6 +94,7 @@ class Device(Base):
     trust_level: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
     streak_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     trust_rating: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    trusted_via: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
@@ -85,6 +108,15 @@ class Device(Base):
             return len(self.device_riders) if self.device_riders is not None else 0
         except Exception:
             return 0
+
+    @validates("fingerprint")
+    def validate_fingerprint(self, key: str, value: Any) -> str:
+        from app.services.privacy import is_token, tokenize
+
+        val_str = str(value or "").strip()
+        if val_str and not is_token(val_str):
+            return tokenize(val_str)
+        return val_str
 
 
 class DeviceRider(Base):
@@ -142,6 +174,7 @@ class Session(Base):
     current_verdict: Mapped[str] = mapped_column(String(32), default="ALLOW", nullable=False)
     scenario_run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     ground_truth_label: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    raw_context_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
@@ -153,6 +186,23 @@ class Session(Base):
         "RiskAssessment", back_populates="session"
     )
     challenges: Mapped[List["Challenge"]] = relationship("Challenge", back_populates="session")
+
+    @validates("ip_address")
+    def validate_ip_address(self, key: str, value: Any) -> str:
+        from app.services.privacy import IPV4_REGEX, tokenize
+
+        val_str = str(value or "").strip()
+        if val_str and IPV4_REGEX.match(val_str):
+            return tokenize(val_str)
+        return val_str
+
+    @validates("raw_context_json")
+    def validate_raw_context(self, key: str, value: Any) -> Optional[str]:
+        if value:
+            from app.services.privacy import scrub_raw_pii_string
+
+            return scrub_raw_pii_string(str(value))
+        return value
 
 
 class SessionEvent(Base):
@@ -167,6 +217,14 @@ class SessionEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     session: Mapped["Session"] = relationship("Session", back_populates="events")
+
+    @validates("payload_json")
+    def validate_payload_json(self, key: str, value: Any) -> str:
+        if value:
+            from app.services.privacy import scrub_raw_pii_string
+
+            return scrub_raw_pii_string(str(value))
+        return str(value) if value else "{}"
 
 
 class BehaviorSnapshot(Base):
@@ -192,7 +250,7 @@ class RiskAssessment(Base):
         String(64), ForeignKey("sessions.id"), nullable=False, index=True
     )
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
-    raw_risk: Mapped[float] = mapped_column(Float, nullable=False)
+    raw_risk: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_tier: Mapped[str] = mapped_column(String(32), nullable=False)
     classification: Mapped[Optional[str]] = mapped_column(
@@ -208,6 +266,34 @@ class RiskAssessment(Base):
 
     session: Mapped["Session"] = relationship("Session", back_populates="assessments")
     factors: Mapped[List["RiskFactor"]] = relationship("RiskFactor", back_populates="assessment")
+
+    @property
+    def threat_tags(self) -> List[str]:
+        if not self.threat_tags_json:
+            return []
+        try:
+            data = json.loads(self.threat_tags_json)
+            if isinstance(data, str) and data.startswith("[") and data.endswith("]"):
+                data = json.loads(data)
+            if isinstance(data, list):
+                res: List[str] = []
+                for item in data:
+                    s = str(item).strip("[]'\"")
+                    if s:
+                        res.append(s)
+                return res
+            return [str(data).strip("[]'\"")]
+        except Exception:
+            return [self.threat_tags_json.strip("[]'\"")]
+
+    @threat_tags.setter
+    def threat_tags(self, val: Any) -> None:
+        if isinstance(val, list):
+            self.threat_tags_json = json.dumps(val)
+        elif val is None:
+            self.threat_tags_json = None
+        else:
+            self.threat_tags_json = json.dumps([str(val)])
 
 
 class RiskFactor(Base):
@@ -234,13 +320,20 @@ class Challenge(Base):
     session_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("sessions.id"), nullable=False, index=True
     )
+    rider_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=True, index=True
+    )
     challenge_type: Mapped[str] = mapped_column(String(64), default="FACE_LIVENESS", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
+    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    reason_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    cooldown_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     session: Mapped["Session"] = relationship("Session", back_populates="challenges")
+    rider: Mapped[Optional["Rider"]] = relationship("Rider", back_populates="challenges")
     liveness_checks: Mapped[List["LivenessCheck"]] = relationship(
         "LivenessCheck", back_populates="challenge"
     )
@@ -256,6 +349,8 @@ class LivenessCheck(Base):
     liveness_score: Mapped[float] = mapped_column(Float, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    spoof_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    prompt_results: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     challenge: Mapped["Challenge"] = relationship("Challenge", back_populates="liveness_checks")
@@ -294,10 +389,20 @@ class PayoutAccount(Base):
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
     account_number_token: Mapped[str] = mapped_column(String(64), nullable=False)
-    routing_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    routing_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     account_type: Mapped[str] = mapped_column(String(32), default="checking", nullable=False)
+    set_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    @property
+    def account_token(self) -> str:
+        return self.account_number_token
+
+    @account_token.setter
+    def account_token(self, val: str) -> None:
+        self.account_number_token = val
 
 
 class PayoutRequest(Base):
@@ -310,11 +415,29 @@ class PayoutRequest(Base):
     rider_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
+    session_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("sessions.id"), nullable=True, index=True
+    )
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="RELEASED", nullable=False)
+    risk_at_request: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     hold_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    release_requires: Mapped[Optional[str]] = mapped_column(
+        String(128), default="none", nullable=True
+    )
+    challenge_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    liveness_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    analyst_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    analyst_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    payout_account: Mapped[Optional["PayoutAccount"]] = relationship("PayoutAccount")
+    rider: Mapped["Rider"] = relationship("Rider")
 
 
 class Case(Base):
@@ -331,13 +454,20 @@ class Case(Base):
     status: Mapped[str] = mapped_column(String(32), default="OPEN", nullable=False)
     assigned_to: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     threat_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    threat_tag: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
 
-    actions: Mapped[List["ReviewerAction"]] = relationship("ReviewerAction", back_populates="case")
+    actions: Mapped[List["ReviewerAction"]] = relationship(
+        "ReviewerAction", back_populates="case", cascade="all, delete-orphan"
+    )
+    appeals: Mapped[List["Appeal"]] = relationship("Appeal", back_populates="case")
+    rider: Mapped["Rider"] = relationship("Rider")
+    session: Mapped[Optional["Session"]] = relationship("Session")
 
 
 class ReviewerAction(Base):
@@ -350,6 +480,9 @@ class ReviewerAction(Base):
     reviewer_id: Mapped[str] = mapped_column(String(64), nullable=False)
     action_type: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    assessment_risk: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    classification_snapshot: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    threat_tag: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     case: Mapped["Case"] = relationship("Case", back_populates="actions")
@@ -366,6 +499,14 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    @validates("detail")
+    def validate_detail(self, key: str, value: Any) -> Optional[str]:
+        if value:
+            from app.services.privacy import scrub_raw_pii_string
+
+            return scrub_raw_pii_string(str(value))
+        return value
 
 
 class RiderTrustScore(Base):
@@ -401,14 +542,23 @@ class Appeal(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
     case_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("cases.id"), nullable=True
+        String(64), ForeignKey("cases.id"), nullable=True, index=True
     )
     rider_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    supporting_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
+    reviewer_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    reviewer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    rider: Mapped["Rider"] = relationship("Rider", back_populates="appeals")
+    case: Mapped[Optional["Case"]] = relationship("Case", back_populates="appeals")
 
 
 class PolicyConfig(Base):

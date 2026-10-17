@@ -440,7 +440,7 @@ def generate_rider_safe_text(
     if "LIVENESS" in recommended_action:
         return (
             "To safeguard your account and pending payouts, "
-            "please complete a quick 5-second selfie verification to confirm you are actively using your account."
+            "please complete a quick selfie verification to confirm you are actively using your account."
         )
 
     # Escalate / restrictions

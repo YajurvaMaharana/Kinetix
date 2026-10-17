@@ -759,6 +759,9 @@ def run_scenario(
                 baseline.setdefault("known_zones", []).append(c["zone"])
             if c.get("zone"):
                 baseline.setdefault("zone_profile", {})[c["zone"]] = 0.35
+            adapt_st = baseline.setdefault("adaptation_state", {})
+            if isinstance(adapt_st, dict):
+                adapt_st.setdefault("new_device", {})["trusted"] = True
 
         if "multi_session_adapt" in step:
             ms = step["multi_session_adapt"]

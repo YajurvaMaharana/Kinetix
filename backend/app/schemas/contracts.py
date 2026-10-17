@@ -19,10 +19,17 @@ class FactorSchema(BaseModel):
 class ChallengeSchema(BaseModel):
     challenge_id: str
     session_id: str
+    rider_id: Optional[str] = None
     challenge_type: str = "FACE_LIVENESS"
     status: str = "PENDING"
+    level: int = 1
+    reason_code: Optional[str] = None
+    cooldown_key: Optional[str] = None
+    suppression_reason: Optional[str] = None
     expires_at: str
     created_at: str
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class AssessmentSchema(BaseModel):
@@ -43,6 +50,9 @@ class AssessmentSchema(BaseModel):
     evaluated_at: str
     change_type: Optional[str] = None
     adaptation_progress: Optional[str] = None
+    trust_health: Optional[float] = None
+    trust_tier: Optional[str] = None
+    boundary_shift: Optional[float] = None
 
 
 class InvestigationPayload(BaseModel):
@@ -127,20 +137,125 @@ class SessionResponse(BaseModel):
 # ------------------------------------------------------------------------------
 class ChallengeRespondRequest(BaseModel):
     passed: bool = True
+    otp_code: Optional[str] = None
     liveness_score: float = 0.95
     confidence: float = 0.92
     proof_payload: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class ChallengeResponse(BaseModel):
     challenge_id: str
     session_id: str
+    rider_id: Optional[str] = None
     challenge_type: str
     status: str
+    level: int = 1
+    reason_code: Optional[str] = None
+    cooldown_key: Optional[str] = None
+    expires_at: Optional[str] = None
+    created_at: Optional[str] = None
     resolved_at: Optional[str] = None
-    verified: bool
+    verified: Optional[bool] = None
+    new_verdict: Optional[str] = None
+    message: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+# ------------------------------------------------------------------------------
+# Face Verification & Liveness Schemas
+# ------------------------------------------------------------------------------
+class FaceEnrollRequest(BaseModel):
+    embedding: Optional[List[float]] = None
+    image_base64: Optional[str] = None
+    model_name: str = "simulated"
+    retention_days: int = 365
+    scenario: Optional[str] = None
+    scenario_flag: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class FaceEnrollResponse(BaseModel):
+    template_id: str
+    rider_id: str
+    model_name: str
+    template_version: str = "v2"
+    raw_image_stored: bool = False
+    embedding_hash: str
+    retention_until: Optional[str] = None
+    created_at: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class FaceVerifyRequest(BaseModel):
+    scenario: Optional[str] = (
+        None  # "genuine_face", "different_person", "static_photo", "replay_attack"
+    )
+    scenario_flag: Optional[str] = None
+    prompt_nonce: Optional[str] = None
+    image_base64: Optional[str] = None
+    embedding: Optional[List[float]] = None
+    spoof_type: Optional[str] = None
+    prompt_response: Optional[Dict[str, Any]] = None
+    proof_payload: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class FaceVerifyResponse(BaseModel):
+    challenge_id: str
+    session_id: str
+    rider_id: str
+    passed: bool
+    similarity: float
+    threshold: float = 0.70
+    liveness_score: float
+    liveness_passed: bool
+    spoof_type: Optional[str] = None
+    prompt_results: Optional[Dict[str, Any]] = None
     new_verdict: str
+    device_trusted: bool
+    raw_image_stored: bool = False
     message: str
+    fallback_available: bool = True
+    fallback_options: List[str] = Field(
+        default_factory=lambda: ["OTP", "document_check", "manual_review"]
+    )
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class LivenessPromptResponse(BaseModel):
+    challenge_id: str
+    prompt: str
+    nonce: str
+    expires_at: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ChallengeFallbackRequest(BaseModel):
+    fallback_type: str = "OTP"  # "OTP", "document_check", "manual_review"
+    otp_code: Optional[str] = None
+    document_data: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ChallengeFallbackResponse(BaseModel):
+    challenge_id: str
+    status: str
+    fallback_type: str
+    new_verdict: Optional[str] = None
+    case_id: Optional[str] = None
+    message: str
+
+    model_config = ConfigDict(extra="ignore")
 
 
 # ------------------------------------------------------------------------------
@@ -237,9 +352,15 @@ class DevicePassportResponse(BaseModel):
 # Case Schemas
 # ------------------------------------------------------------------------------
 class CasePatchRequest(BaseModel):
-    status: Optional[str] = None  # OPEN, IN_REVIEW, RESOLVED_LEGIT, CONFIRMED_FRAUD
+    status: Optional[str] = None  # OPEN, IN_REVIEW, RESOLVED_LEGIT, CONFIRMED_FRAUD, etc.
     assigned_to: Optional[str] = None
     notes: Optional[str] = None
+
+
+class CaseActionRequest(BaseModel):
+    action: str  # false_positive, confirm_fraud, request_reverify, restrict, escalate, clear
+    note: str
+    assigned_to: Optional[str] = None
 
 
 class CaseResponse(BaseModel):
@@ -247,15 +368,78 @@ class CaseResponse(BaseModel):
     case_id: str
     session_id: Optional[str] = None
     rider_id: str
+    rider_name: Optional[str] = None
+    rider_phone: Optional[str] = None
     severity: str
     status: str
-    assigned_to: Optional[str] = None
+    risk_score: Optional[float] = 0.0
     threat_summary: Optional[str] = None
+    threat_tag: Optional[str] = None
+    threat_tags: List[str] = Field(default_factory=list)
+    assigned_to: Optional[str] = None
     notes: Optional[str] = None
     change_type: Optional[str] = None
     adaptation_progress: Optional[str] = None
+    age_minutes: Optional[int] = 0
+    age_display: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class MetricComparisonItem(BaseModel):
+    metric: str
+    label: str
+    observed: float
+    baseline_median: float
+    unit: str
+    deviation_pct: float
+    status: str  # NORMAL, ANOMALOUS
+
+
+class ReviewerActionItem(BaseModel):
+    id: str
+    case_id: str
+    reviewer_id: str
+    action_type: str
+    notes: Optional[str] = None
+    assessment_risk: Optional[float] = None
+    classification_snapshot: Optional[str] = None
+    threat_tag: Optional[str] = None
+    created_at: str
+
+
+class CaseDetailResponse(BaseModel):
+    case: CaseResponse
+    assessment: Optional[Dict[str, Any]] = None
+    baseline_vs_session: List[MetricComparisonItem] = Field(default_factory=list)
+    rider_trust: Optional[Dict[str, Any]] = None
+    device_passport: Optional[Dict[str, Any]] = None
+    cluster: Optional[Dict[str, Any]] = None
+    challenge_history: List[Dict[str, Any]] = Field(default_factory=list)
+    payouts: List[Dict[str, Any]] = Field(default_factory=list)
+    audit_trail: List[Dict[str, Any]] = Field(default_factory=list)
+    reviewer_actions: List[ReviewerActionItem] = Field(default_factory=list)
+
+
+class TagFeedbackItem(BaseModel):
+    threat_tag: str
+    classification: str
+    confirmed_count: int
+    false_positive_count: int
+    total_reviews: int
+    observed_precision: float
+    false_positive_rate: float
+    suggested_nudge: str
+
+
+class PolicyFeedbackSummaryResponse(BaseModel):
+    total_confirmed: int
+    total_false_positives: int
+    total_reviews: int
+    global_precision: float
+    breakdown: List[TagFeedbackItem] = Field(default_factory=list)
+    active_policy_version: str = "v2.4.0"
+    suggested_actions: List[str] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------------------------
@@ -393,3 +577,130 @@ class ScenarioInfoResponse(BaseModel):
     category: str
     expected_verdict: str
     expected_threat_tags: List[str] = Field(default_factory=list)
+
+
+class TrustHealthResponse(BaseModel):
+    rider_id: str
+    trust_health: float
+    trust_tier: str
+    boundary_shift: float
+    trust_health_bonus: float
+    summary: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+# ------------------------------------------------------------------------------
+# Payout Protection Schemas
+# ------------------------------------------------------------------------------
+class PayoutRequestCreate(BaseModel):
+    rider_id: str
+    amount: float
+    currency: str = "USD"
+    destination_account_token: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PayoutResponse(BaseModel):
+    payout_id: str
+    rider_id: str
+    amount: float
+    currency: str = "USD"
+    status: str  # "APPROVED", "HELD", "BLOCKED", "RELEASED"
+    risk_at_request: float
+    reason: str
+    release_requires: (
+        str  # "none", "liveness_selfie", "analyst_approval", "liveness_selfie+analyst_approval"
+    )
+    destination_account_token: Optional[str] = None
+    challenge_id: Optional[str] = None
+    session_id: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PayoutActionRequest(BaseModel):
+    action: str  # "release" | "block"
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PayoutAccountUpdatePayload(BaseModel):
+    account_token: str
+    routing_token: Optional[str] = None
+    account_type: str = "checking"
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ActionOption(BaseModel):
+    action: str  # "selfie" | "otp" | "support" | "appeal"
+    title: str
+    description: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class RiderExplanationResponse(BaseModel):
+    session_id: str
+    headline: str
+    plain_reasons: List[str]
+    rider_safe_text: str
+    verdict: str
+    what_you_can_do: List[ActionOption]
+    case_id: Optional[str] = None
+    appeal_eligible: bool = True
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class AppealCreateRequest(BaseModel):
+    case_id: Optional[str] = None
+    rider_id: Optional[str] = None
+    reason: str
+    supporting_text: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class AppealActionRequest(BaseModel):
+    action: str  # "upheld" | "overturned"
+    note: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class AppealResponse(BaseModel):
+    id: str
+    appeal_id: Optional[str] = None
+    case_id: Optional[str] = None
+    rider_id: str
+    rider_name: Optional[str] = None
+    reason: str
+    supporting_text: Optional[str] = None
+    status: str  # "PENDING" | "UPHELD" | "OVERTURNED"
+    reviewer_id: Optional[str] = None
+    reviewer_notes: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class RetentionPurgeResponse(BaseModel):
+    status: str
+    retention_days: int
+    cutoff_date: str
+    snapshots_deleted: int
+    session_events_deleted: int
+    face_templates_deleted: int
+    audit_logs_retained: int
+    baselines_retained: int
+
+    model_config = ConfigDict(extra="ignore")

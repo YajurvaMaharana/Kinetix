@@ -281,7 +281,11 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     elif is_ordinary_change:
         classification = "ordinary_change"
         # Ordinary life changes (new device, new delivery zone) are held in MONITOR tier (capped at 44.0)
-        final_risk = min(smoothed_risk, cfg.ordinary_change_cap)
+        # Highest trust health riders (>= 95.0) benefit from expanded ALLOW band
+        if trust_health_val >= 95.0:
+            final_risk = min(smoothed_risk, cfg.ordinary_change_cap)
+        else:
+            final_risk = max(allow_threshold + 1.0, min(smoothed_risk, cfg.ordinary_change_cap))
     elif sens >= 0.5:
         classification = "uncertain"
         challenge_floor = max(45.0, monitor_threshold + 1.0)

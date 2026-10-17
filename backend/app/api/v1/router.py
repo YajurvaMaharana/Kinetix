@@ -1,9 +1,11 @@
 import json
+import uuid
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -16,7 +18,7 @@ from app.models.entities import (
     Challenge,
     Device,
     DeviceRider,
-    LivenessCheck,
+    PayoutRequest,
     PolicyConfig,
     ReviewerAction,
     Rider,
@@ -28,21 +30,39 @@ from app.models.entities import (
     Session as SessionModel,
 )
 from app.schemas.contracts import (
+    ActionOption,
+    AppealActionRequest,
+    AppealCreateRequest,
+    AppealResponse,
     AssessmentSchema,
     AuditLogResponse,
-    CasePatchRequest,
+    CaseActionRequest,
     CaseResponse,
+    ChallengeFallbackRequest,
+    ChallengeFallbackResponse,
     ChallengeRespondRequest,
     ChallengeResponse,
     ChallengeSchema,
     DevicePassportResponse,
     DeviceRecentSession,
     DeviceResponse,
+    FaceEnrollRequest,
+    FaceEnrollResponse,
+    FaceVerifyRequest,
+    FaceVerifyResponse,
     FactorSchema,
     GraphResponse,
     InvestigationPayload,
     LinkedRiderInfo,
+    LivenessPromptResponse,
     MetricsSummaryResponse,
+    PayoutAccountUpdatePayload,
+    PayoutActionRequest,
+    PayoutRequestCreate,
+    PayoutResponse,
+    PolicyFeedbackSummaryResponse,
+    RetentionPurgeResponse,
+    RiderExplanationResponse,
     RiderResponse,
     SessionCreateRequest,
     SessionEventRequest,
@@ -50,9 +70,15 @@ from app.schemas.contracts import (
     TimelineItem,
     TimelineResponse,
 )
+from app.scoring.explain import generate_rider_safe_text
+from app.services.appeal_service import appeal_service
 from app.services.audit_service import audit_service
+from app.services.case_service import case_service, format_age
 from app.services.events_bus import event_bus
+from app.services.face_service import face_service
+from app.services.payout_service import payout_service
 from app.services.privacy import mask_name, mask_phone
+from app.services.retention_service import retention_service
 from app.services.session_service import session_service
 
 api_router = APIRouter()
@@ -201,8 +227,12 @@ async def get_session(session_id: str, db: Session = Depends(get_db)):
             ChallengeSchema(
                 challenge_id=chlg.id,
                 session_id=session.id,
+                rider_id=chlg.rider_id or session.rider_id,
                 challenge_type=chlg.challenge_type,
                 status=chlg.status,
+                level=chlg.level,
+                reason_code=chlg.reason_code,
+                cooldown_key=chlg.cooldown_key,
                 expires_at=chlg.expires_at.isoformat(),
                 created_at=chlg.created_at.isoformat(),
             )
@@ -318,8 +348,189 @@ async def get_session_timeline(session_id: str, db: Session = Depends(get_db)):
     )
 
 
+@api_router.get(
+    "/rider-view/sessions/{session_id}",
+    response_model=RiderExplanationResponse,
+    tags=["Rider"],
+)
+async def get_rider_session_explanation(
+    session_id: str,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Rider-safe explanation of session status, plain reasons, and actionable resolution options.
+    Guarantees cross-rider data isolation (403 if accessing another rider's session).
+    Contains strictly ZERO internal risk scores, model internals, or numeric thresholds.
+    """
+    import re
+
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found",
+        )
+
+    # Cross-rider access control
+    if role == "rider":
+        effective_rider = x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+        if effective_rider and effective_rider != session.rider_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: rider cannot read other riders' data.",
+            )
+
+    latest_eval = (
+        db.query(RiskAssessment)
+        .filter(RiskAssessment.session_id == session.id)
+        .order_by(RiskAssessment.created_at.desc())
+        .first()
+    )
+
+    case = (
+        db.query(Case)
+        .filter(Case.session_id == session.id)
+        .order_by(Case.created_at.desc())
+        .first()
+    )
+    if not case:
+        case = (
+            db.query(Case)
+            .filter(Case.rider_id == session.rider_id, Case.status.in_(["OPEN", "UNDER_REVIEW"]))
+            .order_by(Case.created_at.desc())
+            .first()
+        )
+
+    active_challenge = (
+        db.query(Challenge)
+        .filter(Challenge.session_id == session.id, Challenge.status == "PENDING")
+        .order_by(Challenge.created_at.desc())
+        .first()
+    )
+
+    classification = getattr(latest_eval, "classification", "normal") if latest_eval else "normal"
+    rec_action = (
+        getattr(latest_eval, "recommended_action", None)
+        or getattr(latest_eval, "verdict", None)
+        or "ALLOW"
+    )
+    if active_challenge:
+        if active_challenge.challenge_type == "LIVENESS_SELFIE":
+            rec_action = "REQUIRE_LIVENESS"
+        elif active_challenge.challenge_type == "OTP":
+            rec_action = "REQUIRE_OTP"
+
+    safe_text = generate_rider_safe_text(
+        classification=classification,
+        is_new_device=False,
+        city="",
+        zone_id="",
+        recommended_action=rec_action,
+    )
+
+    # Guarantee zero digits or numeric thresholds in rider_safe_text
+    safe_text = re.sub(r"\b\d+(\.\d+)?\b", "", safe_text).strip()
+
+    # Determine transparent headline and plain verdict
+    if "OTP" in rec_action:
+        headline = "One-Time Passcode Check Required"
+        verdict = "Verification Pending"
+    elif "LIVENESS" in rec_action or "SELFIE" in rec_action:
+        headline = "Quick Identity Verification Required"
+        verdict = "Verification Pending"
+    elif rec_action in ("ESCALATE", "BLOCK") or (case and case.status in ("OPEN", "UNDER_REVIEW")):
+        headline = "Account Temporarily Under Review"
+        verdict = "Under Review"
+    else:
+        headline = "Account Active and Secure"
+        verdict = "Clear"
+
+    # Plain reasons: explain security reasons without scores or thresholds
+    plain_reasons: List[str] = []
+    if latest_eval and latest_eval.factors:
+        for f in latest_eval.factors:
+            code = (getattr(f, "code", None) or getattr(f, "name", "") or "").upper()
+            cat = (getattr(f, "category", "") or "").lower()
+            if "BEHAVIOR" in code or cat == "behavior":
+                plain_reasons.append(
+                    "Interaction rhythm patterns differed from regular usage baseline."
+                )
+            elif "ENV" in code or cat == "environment":
+                plain_reasons.append(
+                    "Sign-in initiated from an unfamiliar environment or hardware profile."
+                )
+            elif "SENSITIVE" in code or cat == "sensitive":
+                plain_reasons.append(
+                    "Recent sensitive account or payout modifications were registered."
+                )
+            elif "TRAVEL" in code or cat == "travel":
+                plain_reasons.append(
+                    "Location changes observed between consecutive sign-in attempts."
+                )
+            elif "DEVICE" in code or cat == "device":
+                plain_reasons.append(
+                    "Device configuration signals indicated unexpected environment parameters."
+                )
+            elif "CONSENT" in code:
+                plain_reasons.append(
+                    "Operating in minimal privacy mode pending biometric consent confirmation."
+                )
+
+    if not plain_reasons:
+        if verdict == "Clear":
+            plain_reasons.append("All automated security checks passed successfully.")
+            plain_reasons.append("No unusual behavioral or network shifts observed.")
+        else:
+            plain_reasons.append("Routine security safeguards triggered for your protection.")
+
+    # Remove duplicates preserving order, and guarantee no digits exist
+    deduped_reasons = []
+    for r in plain_reasons:
+        clean_r = re.sub(r"\b\d+(\.\d+)?\b", "", r).strip()
+        if clean_r and clean_r not in deduped_reasons:
+            deduped_reasons.append(clean_r)
+
+    # Resolution action options (always includes selfie, otp, appeal, support)
+    what_you_can_do: List[ActionOption] = [
+        ActionOption(
+            action="selfie",
+            title="Complete Selfie Verification",
+            description="Take a quick face selfie to verify your identity and restore instant dispatches.",
+        ),
+        ActionOption(
+            action="otp",
+            title="Enter SMS Passcode",
+            description="Confirm your sign-in with the one-time code sent to your registered mobile phone.",
+        ),
+        ActionOption(
+            action="appeal",
+            title="Submit an Appeal",
+            description="If you believe this security review is mistaken, submit an appeal for expedited human review.",
+        ),
+        ActionOption(
+            action="support",
+            title="Contact Safety Support",
+            description="Our dedicated Trust & Safety operations team is available to assist you immediately.",
+        ),
+    ]
+
+    return RiderExplanationResponse(
+        session_id=session.id,
+        headline=headline,
+        plain_reasons=deduped_reasons,
+        rider_safe_text=safe_text,
+        verdict=verdict,
+        what_you_can_do=what_you_can_do,
+        case_id=case.id if case else None,
+        appeal_eligible=True,
+    )
+
+
 # ==============================================================================
-# 2. Challenge Verification
+# 2. Challenge Verification & History
 # ==============================================================================
 @api_router.post(
     "/challenges/{challenge_id}/respond",
@@ -335,120 +546,224 @@ async def respond_to_challenge(
 ):
     """
     Submits proof or response for an active biometric / SMS challenge.
-    Updates challenge status, marks device trusted on OTP pass,
-    re-scores with otp_passed flag (or adds CHALLENGE_FAILED on failure),
-    and clears or escalates session.
+    Evaluates verification, executes pass restoration or escalation ladders,
+    records liveness check and audit log, and lazy-checks expiry.
     """
-    chlg = db.query(Challenge).filter(Challenge.id == challenge_id).first()
-    if not chlg:
+    from app.services.stepup_service import stepup_service
+
+    actor = x_actor or role
+    res = stepup_service.handle_challenge_response(
+        db=db,
+        challenge_id=challenge_id,
+        payload=body,
+        actor=actor,
+        role=role,
+    )
+    event_bus.publish(
+        "challenge_resolved",
+        {
+            "challenge_id": res.challenge_id,
+            "session_id": res.session_id,
+            "status": res.status,
+            "verdict": res.new_verdict,
+        },
+    )
+    return res
+
+
+@api_router.get(
+    "/challenges/{challenge_id}",
+    response_model=ChallengeResponse,
+    tags=["Challenges"],
+)
+async def get_challenge(challenge_id: str, db: Session = Depends(get_db)):
+    """
+    Retrieves a single challenge by ID with lazy expiry evaluation.
+    """
+    from app.services.stepup_service import stepup_service
+
+    ch = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not ch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Challenge '{challenge_id}' not found"
         )
 
-    chlg.status = "PASSED" if body.passed else "FAILED"
-    chlg.resolved_at = utcnow()
-
-    # Record liveness check
-    lc = LivenessCheck(
-        id=f"live_{chlg.id[:8]}",
-        challenge_id=chlg.id,
-        liveness_score=body.liveness_score,
-        confidence=body.confidence,
-        passed=body.passed,
-        created_at=utcnow(),
-    )
-    db.add(lc)
-
-    # Update session status
-    session = db.query(SessionModel).filter(SessionModel.id == chlg.session_id).first()
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{chlg.session_id}' not found"
-        )
-
-    actor = x_actor or role
-
-    if body.passed:
-        # Mark device trusted
-        device = db.query(Device).filter(Device.id == session.device_id).first()
-        if device:
-            device.trust_rating = 1.0
-            link = (
-                db.query(DeviceRider)
-                .filter(
-                    DeviceRider.device_id == device.id, DeviceRider.rider_id == session.rider_id
-                )
-                .first()
-            )
-            if link:
-                link.is_primary = True
-
-            # If rider baseline exists and device was provisional/new, mark trusted in baseline state
-            from app.models.entities import RiderBaseline
-            from app.services.baseline_service import baseline_service
-
-            baseline = (
-                db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
-            )
-            if baseline and hasattr(baseline_service, "handle_otp_passed"):
-                baseline_service.handle_otp_passed(baseline, device.fingerprint)
-        db.flush()
-
-        # Re-score with otp_passed=True and persist
-        session, assessment = session_service.handle(
-            db=db,
-            session_or_event=body.proof_payload or {},
-            session_id=session.id,
-            actor=actor,
-            role=role,
-            otp_passed=True,
-            trigger="challenge_result",
-        )
-        new_verdict = assessment.verdict
-        msg = "Challenge passed successfully. Device trusted and session restored."
-    else:
-        # Re-score with challenge_failed=True (+25 points and escalate)
-        session, assessment = session_service.handle(
-            db=db,
-            session_or_event=body.proof_payload or {},
-            session_id=session.id,
-            actor=actor,
-            role=role,
-            challenge_failed=True,
-            trigger="challenge_result",
-        )
-        new_verdict = assessment.verdict
-        msg = "Challenge failed. Session escalated to investigation queue."
-
-    audit_service.log(
-        db,
-        actor,
-        role,
-        "RESPOND_CHALLENGE",
-        "challenge",
-        chlg.id,
-        f"Result: {chlg.status}, Verified={body.passed}, Verdict={new_verdict}",
-    )
-
-    event_bus.publish(
-        "challenge_resolved",
-        {
-            "challenge_id": chlg.id,
-            "session_id": chlg.session_id,
-            "status": chlg.status,
-            "verdict": new_verdict,
-        },
-    )
+    stepup_service.lazy_check_expiry(ch, db)
+    db.commit()
 
     return ChallengeResponse(
-        challenge_id=chlg.id,
-        session_id=chlg.session_id,
-        challenge_type=chlg.challenge_type,
-        status=chlg.status,
-        resolved_at=chlg.resolved_at.isoformat() if chlg.resolved_at else None,
-        verified=body.passed,
-        new_verdict=new_verdict,
-        message=msg,
+        challenge_id=ch.id,
+        session_id=ch.session_id,
+        rider_id=ch.rider_id,
+        challenge_type=ch.challenge_type,
+        status=ch.status,
+        level=ch.level,
+        reason_code=ch.reason_code,
+        cooldown_key=ch.cooldown_key,
+        expires_at=ch.expires_at.isoformat() if ch.expires_at else None,
+        created_at=ch.created_at.isoformat() if ch.created_at else None,
+        resolved_at=ch.resolved_at.isoformat() if ch.resolved_at else None,
+        verified=(ch.status == "PASSED"),
+    )
+
+
+@api_router.get(
+    "/riders/{rider_id}/challenges",
+    response_model=List[ChallengeResponse],
+    tags=["Challenges"],
+)
+async def list_rider_challenges(rider_id: str, db: Session = Depends(get_db)):
+    """
+    Returns step-up challenge history for a rider.
+    Performs lazy expiry evaluation on any PENDING challenge whose timeout has passed.
+    """
+    from app.services.stepup_service import stepup_service
+
+    rider = db.query(Rider).filter(Rider.id == rider_id).first()
+    if not rider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Rider '{rider_id}' not found"
+        )
+
+    challenges = (
+        db.query(Challenge)
+        .outerjoin(SessionModel, Challenge.session_id == SessionModel.id)
+        .filter((Challenge.rider_id == rider_id) | (SessionModel.rider_id == rider_id))
+        .order_by(Challenge.created_at.desc())
+        .all()
+    )
+
+    results = []
+    for ch in challenges:
+        stepup_service.lazy_check_expiry(ch, db)
+        results.append(
+            ChallengeResponse(
+                challenge_id=ch.id,
+                session_id=ch.session_id,
+                rider_id=ch.rider_id or rider_id,
+                challenge_type=ch.challenge_type,
+                status=ch.status,
+                level=ch.level,
+                reason_code=ch.reason_code,
+                cooldown_key=ch.cooldown_key,
+                expires_at=ch.expires_at.isoformat() if ch.expires_at else None,
+                created_at=ch.created_at.isoformat() if ch.created_at else None,
+                resolved_at=ch.resolved_at.isoformat() if ch.resolved_at else None,
+                verified=(ch.status == "PASSED"),
+            )
+        )
+    db.commit()
+    return results
+
+
+# ------------------------------------------------------------------------------
+# Face Verification & Liveness Endpoints
+# ------------------------------------------------------------------------------
+@api_router.post(
+    "/riders/{rider_id}/face/enroll",
+    response_model=FaceEnrollResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Face Verification"],
+)
+async def enroll_rider_face(
+    rider_id: str,
+    payload: FaceEnrollRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Enrolls a Fernet-encrypted facial biometric template for a rider.
+    Never persists raw images; embeds in memory and discards immediately.
+    """
+    actor = x_actor or role
+    return face_service.enroll(
+        db=db,
+        rider_id=rider_id,
+        embedding=payload.embedding,
+        image_base64=payload.image_base64,
+        model_name=payload.model_name,
+        retention_days=payload.retention_days,
+        actor=actor,
+        role=role,
+    )
+
+
+@api_router.get(
+    "/challenges/{challenge_id}/liveness-prompt",
+    response_model=LivenessPromptResponse,
+    tags=["Face Verification"],
+)
+async def get_liveness_prompt(challenge_id: str):
+    """
+    Generates a dynamic 3D liveness micro-action prompt (blink, smile, turn head)
+    with a short nonce.
+    """
+    return face_service.generate_liveness_prompt(challenge_id)
+
+
+@api_router.post(
+    "/challenges/{challenge_id}/face-verify",
+    response_model=FaceVerifyResponse,
+    tags=["Face Verification"],
+)
+async def verify_face_challenge(
+    challenge_id: str,
+    payload: FaceVerifyRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Executes strictly 1:1 facial biometric verification against enrolled template.
+    Evaluates 3D liveness, decrypts template, computes similarity against 0.70 threshold.
+    Restores session on pass; triggers rule floors & escalates to case on failure.
+    """
+    actor = x_actor or role
+    res = face_service.verify(
+        db=db,
+        challenge_id=challenge_id,
+        input_payload=payload,
+        actor=actor,
+        role=role,
+    )
+    event_bus.publish(
+        "face_verification_completed",
+        {
+            "challenge_id": challenge_id,
+            "session_id": res.session_id,
+            "passed": res.passed,
+            "verdict": res.new_verdict,
+            "device_trusted": res.device_trusted,
+        },
+    )
+    return res
+
+
+@api_router.post(
+    "/challenges/{challenge_id}/fallback",
+    response_model=ChallengeFallbackResponse,
+    tags=["Face Verification"],
+)
+async def fallback_face_challenge(
+    challenge_id: str,
+    payload: ChallengeFallbackRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Executes fallback options when face verification is unavailable or requested.
+    Supports OTP downgrade, simulated document check, or manual review escalation.
+    """
+    actor = x_actor or role
+    return face_service.fallback(
+        db=db,
+        challenge_id=challenge_id,
+        fallback_type=payload.fallback_type,
+        proof_data=payload.document_data or {"otp_code": payload.otp_code},
+        actor=actor,
+        role=role,
     )
 
 
@@ -768,103 +1083,148 @@ async def get_device_passport(
 # 5. Cases & Analyst Workflows
 # ==============================================================================
 @api_router.get("/cases", response_model=List[CaseResponse], tags=["Cases"])
-async def list_cases(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_cases(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    severity_filter: Optional[str] = Query(None, alias="severity"),
+    rider_filter: Optional[str] = Query(None, alias="rider"),
+    threat_tag_filter: Optional[str] = Query(None, alias="threat_tag"),
+    date_filter: Optional[str] = Query(None, alias="date"),
+    sort_by: str = Query("created_at", alias="sort"),
+    order: str = Query("desc"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
     """
-    Lists cases with optional status filter.
+    Lists queue cases with multi-criteria filtering (status, severity, rider, threat_tag, date)
+    and sorting. Automatically masks PII for role=analyst.
     """
-    q = db.query(Case)
-    if status_filter:
-        q = q.filter(Case.status == status_filter)
-    cases = q.order_by(Case.created_at.desc()).limit(100).all()
-    return [
-        CaseResponse(
-            id=c.id,
-            case_id=c.id,
-            session_id=c.session_id,
-            rider_id=c.rider_id,
-            severity=c.severity,
-            status=c.status,
-            assigned_to=c.assigned_to,
-            threat_summary=c.threat_summary,
-            notes=c.notes,
-            created_at=c.created_at.isoformat(),
-            updated_at=c.updated_at.isoformat(),
-        )
-        for c in cases
-    ]
-
-
-@api_router.get("/cases/{case_id}", response_model=CaseResponse, tags=["Cases"])
-async def get_case(case_id: str, db: Session = Depends(get_db)):
-    """
-    Retrieves case details.
-    """
-    c = db.query(Case).filter(Case.id == case_id).first()
-    if not c:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Case '{case_id}' not found"
-        )
-
-    return CaseResponse(
-        id=c.id,
-        case_id=c.id,
-        session_id=c.session_id,
-        rider_id=c.rider_id,
-        severity=c.severity,
-        status=c.status,
-        assigned_to=c.assigned_to,
-        threat_summary=c.threat_summary,
-        notes=c.notes,
-        created_at=c.created_at.isoformat(),
-        updated_at=c.updated_at.isoformat(),
+    return case_service.list_cases(
+        db=db,
+        status_filter=status_filter,
+        severity_filter=severity_filter,
+        rider_filter=rider_filter,
+        threat_tag_filter=threat_tag_filter,
+        date_filter=date_filter,
+        sort_by=sort_by,
+        order=order,
+        limit=limit,
+        offset=offset,
+        role=role,
     )
+
+
+@api_router.get("/cases/{case_id}", tags=["Cases"])
+async def get_case(
+    case_id: str,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Retrieves complete 360-degree case dossier:
+    case metadata, assessment with factor waterfall, baseline vs session comparison
+    (observed vs median per metric), rider trust score, device passport, fraud cluster,
+    challenge history, payouts, and audit trail.
+    """
+    detail = case_service.get_case_detail(db=db, case_id=case_id, role=role)
+    c_dict = detail.case.model_dump()
+    # Merge rich dossier sections into root response for backwards compatibility
+    c_dict["case"] = detail.case.model_dump()
+    c_dict["assessment"] = detail.assessment
+    c_dict["baseline_vs_session"] = [item.model_dump() for item in detail.baseline_vs_session]
+    c_dict["rider_trust_score"] = detail.rider_trust
+    c_dict["rider_trust"] = detail.rider_trust
+    c_dict["device_passport"] = detail.device_passport
+    c_dict["cluster"] = detail.cluster
+    c_dict["challenge_history"] = detail.challenge_history
+    c_dict["payouts"] = detail.payouts
+    c_dict["audit_trail"] = detail.audit_trail
+    c_dict["reviewer_actions"] = [act.model_dump() for act in detail.reviewer_actions]
+    return c_dict
 
 
 @api_router.patch("/cases/{case_id}", response_model=CaseResponse, tags=["Cases"])
 async def update_case(
     case_id: str,
-    patch: CasePatchRequest,
+    payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     role: str = Depends(get_role),
     x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
 ):
     """
-    Updates case status, assignee, or analyst notes. Records ReviewerAction and AuditLog.
+    Analyst review action on a case with verified side-effects:
+    action in {false_positive, confirm_fraud, request_reverify, restrict, escalate, clear}
+    with required review note.
+    Records reviewer_actions (with risk and class snapshot) and audit_logs.
     """
+    require_role("analyst", "admin", "investigator", "finance")(role)
+    actor = x_actor or role
+
+    action = payload.get("action")
+    note = payload.get("note") or payload.get("notes")
+    assigned_to = payload.get("assigned_to")
+
+    if action:
+        if not note or not str(note).strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A non-empty review note is strictly required for all case actions.",
+            )
+        req = CaseActionRequest(
+            action=str(action),
+            note=str(note).strip(),
+            assigned_to=str(assigned_to) if assigned_to else None,
+        )
+        res = case_service.handle_case_action(
+            db=db,
+            case_id=case_id,
+            action_req=req,
+            actor=actor,
+            role=role,
+        )
+        event_bus.publish(
+            f"case_action_{action.lower()}",
+            {"case_id": case_id, "action": action, "actor": actor, "status": res.status},
+        )
+        return res
+
+    # Legacy fallback for patch without action key
     c = db.query(Case).filter(Case.id == case_id).first()
     if not c:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Case '{case_id}' not found"
         )
 
-    actor = x_actor or role
     changes = []
-
-    if patch.status is not None:
-        c.status = patch.status
-        changes.append(f"status={patch.status}")
-    if patch.assigned_to is not None:
-        c.assigned_to = patch.assigned_to
-        changes.append(f"assigned_to={patch.assigned_to}")
-    if patch.notes is not None:
-        c.notes = patch.notes
+    if "status" in payload and payload["status"] is not None:
+        c.status = payload["status"]
+        changes.append(f"status={payload['status']}")
+    if "assigned_to" in payload and payload["assigned_to"] is not None:
+        c.assigned_to = payload["assigned_to"]
+        changes.append(f"assigned_to={payload['assigned_to']}")
+    if note:
+        c.notes = f"{c.notes or ''}\n[{actor}]: {note}".strip()
         changes.append("notes_updated")
 
     c.updated_at = utcnow()
 
     # Record ReviewerAction
-    action = ReviewerAction(
-        id=f"act_{c.id[:8]}",
+    rev_act = ReviewerAction(
+        id=f"act_{uuid.uuid4().hex[:10]}",
         case_id=c.id,
         reviewer_id=actor,
         action_type="UPDATE_CASE",
-        notes=patch.notes or ", ".join(changes),
+        notes=note or ", ".join(changes),
+        assessment_risk=c.risk_score or 50.0,
+        classification_snapshot="ordinary_change",
+        threat_tag=c.threat_tag or "UNSPECIFIED",
         created_at=utcnow(),
     )
-    db.add(action)
+    db.add(rev_act)
     db.commit()
+    db.refresh(c)
 
-    # Immutable Audit Log
     audit_service.log(
         db,
         actor,
@@ -875,6 +1235,7 @@ async def update_case(
         f"Updated: {', '.join(changes)}",
     )
 
+    age_min, age_str = format_age(c.created_at)
     return CaseResponse(
         id=c.id,
         case_id=c.id,
@@ -882,9 +1243,14 @@ async def update_case(
         rider_id=c.rider_id,
         severity=c.severity,
         status=c.status,
-        assigned_to=c.assigned_to,
+        risk_score=c.risk_score or 0.0,
         threat_summary=c.threat_summary,
+        threat_tag=c.threat_tag,
+        threat_tags=[c.threat_tag] if c.threat_tag else [],
+        assigned_to=c.assigned_to,
         notes=c.notes,
+        age_minutes=age_min,
+        age_display=age_str,
         created_at=c.created_at.isoformat(),
         updated_at=c.updated_at.isoformat(),
     )
@@ -983,6 +1349,135 @@ async def get_audit_logs(db: Session = Depends(get_db)):
         )
         for log in logs
     ]
+
+
+# ==============================================================================
+# 6b. Policy & Feedback Summary (Admin Only for updates)
+# ==============================================================================
+@api_router.get(
+    "/policy/feedback-summary",
+    response_model=PolicyFeedbackSummaryResponse,
+    tags=["Policy"],
+)
+async def get_policy_feedback_summary(
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Returns reviewer feedback summary across threat tags and classifications,
+    observed precision, and suggested threshold boundary nudges.
+    """
+    return case_service.get_policy_feedback_summary(db=db)
+
+
+@api_router.get(
+    "/policy/active",
+    tags=["Policy"],
+)
+async def get_active_policy(
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Retrieves the currently active policy configuration.
+    """
+    active = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
+    if not active:
+        active = PolicyConfig(
+            id="policy_v2_default",
+            version="v2.4.0",
+            allow_threshold=20.0,
+            monitor_threshold=50.0,
+            challenge_threshold=75.0,
+            escalate_threshold=80.0,
+            is_active=True,
+            created_at=utcnow(),
+        )
+        db.add(active)
+        db.commit()
+        db.refresh(active)
+
+    return {
+        "id": active.id,
+        "version": active.version,
+        "allow_threshold": active.allow_threshold,
+        "monitor_threshold": active.monitor_threshold,
+        "challenge_threshold": active.challenge_threshold,
+        "escalate_threshold": active.escalate_threshold,
+        "is_active": active.is_active,
+        "created_at": active.created_at.isoformat(),
+    }
+
+
+@api_router.post(
+    "/policy/update",
+    dependencies=[Depends(require_role("admin"))],
+    tags=["Policy"],
+)
+@api_router.put(
+    "/policy/active",
+    dependencies=[Depends(require_role("admin"))],
+    tags=["Policy"],
+)
+async def update_active_policy(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="admin", alias="X-Actor"),
+):
+    """
+    Updates active policy threshold cut-lines. Restricted strictly to role=admin.
+    """
+    actor = x_actor or role
+    active = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
+    if not active:
+        active = PolicyConfig(
+            id=f"pol_{uuid.uuid4().hex[:8]}",
+            version="v2.4.0",
+            allow_threshold=20.0,
+            monitor_threshold=50.0,
+            challenge_threshold=75.0,
+            escalate_threshold=80.0,
+            is_active=True,
+            created_at=utcnow(),
+        )
+        db.add(active)
+
+    if "allow_threshold" in payload:
+        active.allow_threshold = float(payload["allow_threshold"])
+    if "monitor_threshold" in payload:
+        active.monitor_threshold = float(payload["monitor_threshold"])
+    if "challenge_threshold" in payload:
+        active.challenge_threshold = float(payload["challenge_threshold"])
+    if "escalate_threshold" in payload:
+        active.escalate_threshold = float(payload["escalate_threshold"])
+    if "version" in payload:
+        active.version = str(payload["version"])
+
+    db.commit()
+    db.refresh(active)
+
+    audit_service.log(
+        db=db,
+        actor=actor,
+        role=role,
+        action="POLICY_UPDATED",
+        entity_type="policy",
+        entity_id=active.id,
+        detail=(
+            f"Policy updated to v{active.version}: allow={active.allow_threshold}, "
+            f"challenge={active.challenge_threshold}, escalate={active.escalate_threshold}"
+        ),
+    )
+    return {
+        "status": "success",
+        "policy_id": active.id,
+        "version": active.version,
+        "allow_threshold": active.allow_threshold,
+        "monitor_threshold": active.monitor_threshold,
+        "challenge_threshold": active.challenge_threshold,
+        "escalate_threshold": active.escalate_threshold,
+    }
 
 
 # ==============================================================================
@@ -1176,7 +1671,445 @@ async def get_metrics_evaluation():
 
 
 # ==============================================================================
-# 8. Server-Sent Events (SSE) Stream
+# 7. Payout Protection & Escrow Gating
+# ==============================================================================
+@api_router.post(
+    "/payouts/request",
+    response_model=PayoutResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Payouts"],
+)
+def create_payout_request(
+    payload: PayoutRequestCreate,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Submits a withdrawal request evaluated against payout protection policies.
+    Returns status: APPROVED (risk < 45), HELD (risk 45-74, 24h window, high amount),
+    or BLOCKED (critical risk >= 75, open case, syndicate cluster).
+    """
+    actor = x_actor or role
+    res = payout_service.request_payout(db=db, payload=payload, actor=actor, role=role)
+    event_bus.publish(
+        "payout_requested",
+        {
+            "payout_id": res.payout_id,
+            "rider_id": res.rider_id,
+            "amount": res.amount,
+            "status": res.status,
+            "reason": res.reason,
+            "release_requires": res.release_requires,
+        },
+    )
+    return res
+
+
+@api_router.get(
+    "/payouts",
+    response_model=List[PayoutResponse],
+    tags=["Payouts"],
+)
+def list_payouts(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    rider_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Lists payout disbursements with status filters (APPROVED, HELD, BLOCKED, RELEASED).
+    """
+    query = db.query(PayoutRequest)
+    if status_filter:
+        query = query.filter(PayoutRequest.status == status_filter.upper())
+    if rider_id:
+        query = query.filter(PayoutRequest.rider_id == rider_id)
+
+    payouts = query.order_by(PayoutRequest.created_at.desc()).limit(limit).all()
+    results = []
+    for p in payouts:
+        dest_tok = p.payout_account.account_number_token if p.payout_account else None
+        results.append(
+            PayoutResponse(
+                payout_id=p.id,
+                rider_id=p.rider_id,
+                amount=p.amount,
+                currency=p.currency,
+                status=p.status,
+                risk_at_request=p.risk_at_request or 0.0,
+                reason=p.reason or p.hold_reason or "",
+                release_requires=p.release_requires or "none",
+                destination_account_token=dest_tok,
+                challenge_id=p.challenge_id,
+                session_id=p.session_id,
+                created_at=p.created_at.isoformat(),
+                updated_at=p.updated_at.isoformat() if p.updated_at else None,
+            )
+        )
+    return results
+
+
+@api_router.patch(
+    "/payouts/{payout_id}",
+    response_model=PayoutResponse,
+    tags=["Payouts"],
+)
+def update_payout_status(
+    payout_id: str,
+    payload: PayoutActionRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Analyst review action to release or block a held payout.
+    Enforces two-phase verification: payouts requiring liveness selfie must have
+    completed facial verification before release.
+    """
+    require_role(["analyst", "admin", "investigator", "finance"])(role)
+    actor = x_actor or role
+    res = payout_service.handle_payout_action(
+        db=db,
+        payout_id=payout_id,
+        action_req=payload,
+        actor=actor,
+        role=role,
+    )
+    event_bus.publish(
+        f"payout_{payload.action.lower()}ed",
+        {
+            "payout_id": payout_id,
+            "status": res.status,
+            "action": payload.action,
+            "actor": actor,
+        },
+    )
+    return res
+
+
+@api_router.post(
+    "/riders/{rider_id}/payout-account",
+    tags=["Payouts"],
+)
+def update_rider_payout_account(
+    rider_id: str,
+    payload: PayoutAccountUpdatePayload,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Updates or registers destination payout account for a rider.
+    Starts the 24-hour protection window where subsequent payouts are held.
+    """
+    actor = x_actor or role
+    acct = payout_service.set_payout_account(
+        db=db,
+        rider_id=rider_id,
+        account_token=payload.account_token,
+        routing_token=payload.routing_token,
+        account_type=payload.account_type,
+        actor=actor,
+        role=role,
+    )
+    return {
+        "status": "success",
+        "account_id": acct.id,
+        "rider_id": rider_id,
+        "account_token": acct.account_number_token,
+        "protection_window_active": True,
+        "protection_window_expires_at": (acct.set_at + timedelta(hours=24)).isoformat(),
+    }
+
+
+@api_router.post(
+    "/payouts/evaluate",
+    tags=["Payouts"],
+)
+def evaluate_payout_preview(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+):
+    """
+    Interactive simulation helper to preview payout safety decisions.
+    """
+    req = PayoutRequestCreate(
+        rider_id=str(payload.get("rider_id", "rider_default")),
+        amount=float(payload.get("amount", 50.0)),
+        currency=str(payload.get("currency", "USD")),
+        destination_account_token=payload.get("destination_account_token"),
+        session_id=payload.get("session_id"),
+    )
+    return payout_service.evaluate_payout(db=db, request=req)
+
+
+# ==============================================================================
+# 8. Data Retention & Privacy Management
+# ==============================================================================
+@api_router.post(
+    "/admin/retention/purge",
+    response_model=RetentionPurgeResponse,
+    tags=["Admin", "Retention"],
+)
+def purge_retention(
+    days: int = Query(default=90, ge=1, description="Purge raw telemetry older than N days"),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="admin", alias="X-Actor"),
+):
+    """
+    Deletes raw behavioral snapshots, session telemetry events older than N days,
+    and expired face templates past retention_until.
+    Preserves aggregated baseline features and immutable audit logs.
+    Restricted to role=admin.
+    """
+    if role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: admin role required for data retention purge.",
+        )
+
+    res = retention_service.purge_expired_data(
+        db=db,
+        days=days,
+        actor=x_actor or "admin",
+        role=role,
+    )
+    return RetentionPurgeResponse(**res)
+
+
+# ==============================================================================
+# 9. Appeals & Redress Workflow
+# ==============================================================================
+@api_router.post(
+    "/appeals",
+    response_model=AppealResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Appeals"],
+)
+def create_appeal(
+    payload: AppealCreateRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Submits a new formal appeal on behalf of a rider.
+    Enforces rider ownership when called with role=rider.
+    """
+    target_rider_id = (
+        payload.rider_id or x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+    )
+    if not target_rider_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rider identity is required to file an appeal.",
+        )
+
+    if role == "rider":
+        effective_rider = x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+        if effective_rider and target_rider_id != effective_rider:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: rider can only submit appeals for their own account.",
+            )
+
+    appeal = appeal_service.create_appeal(
+        db=db,
+        case_id=payload.case_id,
+        rider_id=target_rider_id,
+        reason=payload.reason,
+        supporting_text=payload.supporting_text,
+        actor=x_actor or target_rider_id,
+        role=role,
+    )
+
+    rider = db.query(Rider).filter(Rider.id == appeal.rider_id).first()
+    return AppealResponse(
+        id=appeal.id,
+        appeal_id=appeal.id,
+        case_id=appeal.case_id,
+        rider_id=appeal.rider_id,
+        rider_name=mask_name(rider.display_name)
+        if rider and role in ("analyst", "investigator")
+        else (rider.display_name if rider else None),
+        reason=appeal.reason,
+        supporting_text=appeal.supporting_text,
+        status=appeal.status,
+        reviewer_id=appeal.reviewer_id,
+        reviewer_notes=appeal.reviewer_notes,
+        created_at=appeal.created_at.isoformat(),
+        updated_at=appeal.updated_at.isoformat() if appeal.updated_at else None,
+    )
+
+
+@api_router.get(
+    "/appeals",
+    response_model=List[AppealResponse],
+    tags=["Appeals"],
+)
+def list_appeals(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    rider_id: Optional[str] = Query(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Lists appeals with optional status and rider filtering.
+    For role=rider, queries are strictly constrained to the authenticated rider's own records.
+    """
+    effective_rider_id = rider_id
+    if role == "rider":
+        effective_rider_id = x_rider_id or (
+            x_actor if x_actor not in ("rider", "system") else rider_id
+        )
+
+    appeals = appeal_service.list_appeals(
+        db=db,
+        status_filter=status_filter,
+        rider_id=effective_rider_id,
+        skip=skip,
+        limit=limit,
+        role=role,
+    )
+
+    results: List[AppealResponse] = []
+    for a in appeals:
+        r = db.query(Rider).filter(Rider.id == a.rider_id).first()
+        r_name = r.display_name if r else None
+        if role in ("analyst", "investigator") and r_name:
+            r_name = mask_name(r_name)
+        results.append(
+            AppealResponse(
+                id=a.id,
+                appeal_id=a.id,
+                case_id=a.case_id,
+                rider_id=a.rider_id,
+                rider_name=r_name,
+                reason=a.reason,
+                supporting_text=a.supporting_text,
+                status=a.status,
+                reviewer_id=a.reviewer_id,
+                reviewer_notes=a.reviewer_notes,
+                created_at=a.created_at.isoformat(),
+                updated_at=a.updated_at.isoformat() if a.updated_at else None,
+            )
+        )
+    return results
+
+
+@api_router.get(
+    "/appeals/{appeal_id}",
+    response_model=AppealResponse,
+    tags=["Appeals"],
+)
+def get_appeal(
+    appeal_id: str,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Retrieves a single appeal record. Enforces cross-rider access isolation for role=rider.
+    """
+    effective_rider = x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+    appeal = appeal_service.get_appeal(
+        db=db,
+        appeal_id=appeal_id,
+        rider_id=effective_rider,
+        role=role,
+    )
+    r = db.query(Rider).filter(Rider.id == appeal.rider_id).first()
+    r_name = r.display_name if r else None
+    if role in ("analyst", "investigator") and r_name:
+        r_name = mask_name(r_name)
+
+    return AppealResponse(
+        id=appeal.id,
+        appeal_id=appeal.id,
+        case_id=appeal.case_id,
+        rider_id=appeal.rider_id,
+        rider_name=r_name,
+        reason=appeal.reason,
+        supporting_text=appeal.supporting_text,
+        status=appeal.status,
+        reviewer_id=appeal.reviewer_id,
+        reviewer_notes=appeal.reviewer_notes,
+        created_at=appeal.created_at.isoformat(),
+        updated_at=appeal.updated_at.isoformat() if appeal.updated_at else None,
+    )
+
+
+@api_router.patch(
+    "/appeals/{appeal_id}",
+    response_model=AppealResponse,
+    tags=["Appeals"],
+)
+def update_appeal(
+    appeal_id: str,
+    payload: AppealActionRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Analyst review action on an appeal:
+    action in {'upheld', 'overturned'} with mandatory reviewer note.
+    Overturning an appeal:
+    - lifts restrictions (rider.status = 'active')
+    - marks the case false_positive
+    - releases eligible held payouts
+    - restores trust history
+    - records feedback for adaptive policy tuning
+    - writes audit logs
+    """
+    if role == "rider":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: riders cannot resolve or adjudicate appeals.",
+        )
+
+    appeal = appeal_service.handle_appeal_action(
+        db=db,
+        appeal_id=appeal_id,
+        action=payload.action,
+        note=payload.note,
+        actor=x_actor or "analyst",
+        role=role,
+    )
+
+    r = db.query(Rider).filter(Rider.id == appeal.rider_id).first()
+    r_name = r.display_name if r else None
+    if role in ("analyst", "investigator") and r_name:
+        r_name = mask_name(r_name)
+
+    return AppealResponse(
+        id=appeal.id,
+        appeal_id=appeal.id,
+        case_id=appeal.case_id,
+        rider_id=appeal.rider_id,
+        rider_name=r_name,
+        reason=appeal.reason,
+        supporting_text=appeal.supporting_text,
+        status=appeal.status,
+        reviewer_id=appeal.reviewer_id,
+        reviewer_notes=appeal.reviewer_notes,
+        created_at=appeal.created_at.isoformat(),
+        updated_at=appeal.updated_at.isoformat() if appeal.updated_at else None,
+    )
+
+
+# ==============================================================================
+# 10. Server-Sent Events (SSE) Stream
 # ==============================================================================
 @api_router.get("/stream/events", tags=["Streaming"])
 async def stream_events(request: Request):

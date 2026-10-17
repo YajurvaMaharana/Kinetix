@@ -107,10 +107,14 @@ demo: reset seed train
 	@echo "[OK] TrustJuggler v2 Demo environment ready! Run 'make dev' to launch."
 
 purge:
+	@echo "[*] Purging expired behavioral snapshots, session telemetry events, and face templates older than 90 days..."
+	@$(PYTHON) backend/app/scripts/retention_purge.py --days 90
+
+clean:
 	@echo "[*] Purging all build artifacts, dependencies, and temporary caches..."
 	@$(RM_RF) backend/.venv backend/__pycache__ backend/*/__pycache__ backend/*/*/__pycache__
 	@$(RM_RF) frontend/node_modules frontend/.next
 	@$(RM_RF) .pytest_cache backend/.pytest_cache .ruff_cache backend/.ruff_cache
 	@$(RM_RF) backend/*.db backend/*.sqlite3 *.db *.sqlite3
 	@$(RM_RF) backend/app/ml/artifacts/*.joblib
-	@echo "[OK] Purge complete."
+	@echo "[OK] Clean complete."
