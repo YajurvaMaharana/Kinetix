@@ -173,14 +173,27 @@ def generate_explanation(
 
     pts_trav = components.get("pts_travel_risk", 0.0)
     if pts_trav > 0.0:
+        travel_factors = details.get("travel_factors", [])
+        obs_travel = details.get("travel_observed") or f"travel_risk={details.get('travel_risk', 0.0):.2f}"
+        exp_travel = details.get("travel_explanation") or "Kinematic velocity or trajectory flagged by travel analysis service."
+        code_travel = details.get("travel_code") or "TRAVEL_RISK"
+        label_travel = "Kinematic Travel Anomaly"
+
+        if travel_factors:
+            tf = travel_factors[0]
+            obs_travel = getattr(tf, "observed", obs_travel)
+            exp_travel = getattr(tf, "explanation", exp_travel)
+            code_travel = getattr(tf, "code", code_travel)
+            label_travel = getattr(tf, "label", label_travel)
+
         all_positive.append(ExplanationFactor(
-            code="TRAVEL_RISK",
+            code=code_travel,
             category="travel",
             points=pts_trav,
-            label="Kinematic Travel Anomaly",
-            observed=f"travel_risk={details.get('travel_risk', 0.0):.2f}",
-            baseline="plausible urban travel speed",
-            explanation="Kinematic velocity or trajectory flagged by travel analysis service.",
+            label=label_travel,
+            observed=obs_travel,
+            baseline="max plausible 150 km/h",
+            explanation=exp_travel,
         ))
 
     # 7. Graph Syndicate Risk (+12 * graph_risk)

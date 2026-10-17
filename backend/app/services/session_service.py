@@ -163,11 +163,41 @@ class SessionService:
         baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == req.rider_id).first()
         policy = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
 
+        # Query previous session's last location
+        prev_session = (
+            db.query(SessionModel)
+            .filter(SessionModel.rider_id == req.rider_id, SessionModel.id != session.id)
+            .order_by(SessionModel.created_at.desc())
+            .first()
+        )
+        previous_location = None
+        if prev_session:
+            last_ev = (
+                db.query(SessionEvent)
+                .filter(SessionEvent.session_id == prev_session.id, SessionEvent.event_type == "location_ping")
+                .order_by(SessionEvent.created_at.desc())
+                .first()
+            )
+            if last_ev:
+                try:
+                    previous_location = json.loads(last_ev.payload_json)
+                    if isinstance(previous_location, dict) and "created_at" not in previous_location:
+                        previous_location["created_at"] = last_ev.created_at.isoformat()
+                except Exception:
+                    pass
+
+        # Extract initial pings if available in request
+        init_pings = []
+        if hasattr(req, "location") and req.location:
+            init_pings.append(req.location.model_dump() if hasattr(req.location, "model_dump") else req.location)
+
         ctx = ScoringContext(
             request_or_event=req,
             baseline=baseline,
             device_passport=device,
             active_policy=policy,
+            location_pings=init_pings if init_pings else None,
+            previous_location=previous_location,
         )
 
         # Score exclusively through interface in app/scoring/risk.py
@@ -329,11 +359,56 @@ class SessionService:
         baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
         policy = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
 
+        # Query the last N location pings (from session_events)
+        recent_pings_events = (
+            db.query(SessionEvent)
+            .filter(SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping")
+            .order_by(SessionEvent.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        location_pings = []
+        for pe in reversed(recent_pings_events):
+            try:
+                p_data = json.loads(pe.payload_json)
+                if isinstance(p_data, dict):
+                    if "created_at" not in p_data and "timestamp" not in p_data:
+                        p_data["created_at"] = pe.created_at.isoformat()
+                    location_pings.append(p_data)
+            except Exception:
+                pass
+
+        # Query previous session's last location
+        prev_session = (
+            db.query(SessionModel)
+            .filter(SessionModel.rider_id == session.rider_id, SessionModel.id != session.id)
+            .order_by(SessionModel.created_at.desc())
+            .first()
+        )
+        previous_location = None
+        if prev_session:
+            last_ev = (
+                db.query(SessionEvent)
+                .filter(SessionEvent.session_id == prev_session.id, SessionEvent.event_type == "location_ping")
+                .order_by(SessionEvent.created_at.desc())
+                .first()
+            )
+            if last_ev:
+                try:
+                    previous_location = json.loads(last_ev.payload_json)
+                    if isinstance(previous_location, dict) and "created_at" not in previous_location:
+                        previous_location["created_at"] = last_ev.created_at.isoformat()
+                except Exception:
+                    pass
+
         ctx = ScoringContext(
             request_or_event={"event_type": event_type, **payload},
             baseline=baseline,
             device_passport=device,
             active_policy=policy,
+            location_pings=location_pings if location_pings else None,
+            previous_location=previous_location,
+            previous_risk_score=session.current_risk_score,
         )
         scored = score_session(ctx)
 
