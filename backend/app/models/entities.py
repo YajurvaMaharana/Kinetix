@@ -41,6 +41,7 @@ class Rider(Base):
     trust_score: Mapped[Optional["RiderTrustScore"]] = relationship(
         "RiderTrustScore", back_populates="rider", uselist=False
     )
+    challenges: Mapped[List["Challenge"]] = relationship("Challenge", back_populates="rider")
 
 
 class FaceTemplate(Base):
@@ -234,13 +235,20 @@ class Challenge(Base):
     session_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("sessions.id"), nullable=False, index=True
     )
+    rider_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("riders.id"), nullable=True, index=True
+    )
     challenge_type: Mapped[str] = mapped_column(String(64), default="FACE_LIVENESS", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
+    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    reason_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    cooldown_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     session: Mapped["Session"] = relationship("Session", back_populates="challenges")
+    rider: Mapped[Optional["Rider"]] = relationship("Rider", back_populates="challenges")
     liveness_checks: Mapped[List["LivenessCheck"]] = relationship(
         "LivenessCheck", back_populates="challenge"
     )

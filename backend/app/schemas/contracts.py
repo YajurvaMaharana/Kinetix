@@ -19,10 +19,17 @@ class FactorSchema(BaseModel):
 class ChallengeSchema(BaseModel):
     challenge_id: str
     session_id: str
+    rider_id: Optional[str] = None
     challenge_type: str = "FACE_LIVENESS"
     status: str = "PENDING"
+    level: int = 1
+    reason_code: Optional[str] = None
+    cooldown_key: Optional[str] = None
+    suppression_reason: Optional[str] = None
     expires_at: str
     created_at: str
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class AssessmentSchema(BaseModel):
@@ -127,20 +134,31 @@ class SessionResponse(BaseModel):
 # ------------------------------------------------------------------------------
 class ChallengeRespondRequest(BaseModel):
     passed: bool = True
+    otp_code: Optional[str] = None
     liveness_score: float = 0.95
     confidence: float = 0.92
     proof_payload: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class ChallengeResponse(BaseModel):
     challenge_id: str
     session_id: str
+    rider_id: Optional[str] = None
     challenge_type: str
     status: str
+    level: int = 1
+    reason_code: Optional[str] = None
+    cooldown_key: Optional[str] = None
+    expires_at: Optional[str] = None
+    created_at: Optional[str] = None
     resolved_at: Optional[str] = None
-    verified: bool
-    new_verdict: str
-    message: str
+    verified: Optional[bool] = None
+    new_verdict: Optional[str] = None
+    message: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
 
 
 # ------------------------------------------------------------------------------

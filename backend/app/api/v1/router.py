@@ -16,7 +16,6 @@ from app.models.entities import (
     Challenge,
     Device,
     DeviceRider,
-    LivenessCheck,
     PolicyConfig,
     ReviewerAction,
     Rider,
@@ -201,8 +200,12 @@ async def get_session(session_id: str, db: Session = Depends(get_db)):
             ChallengeSchema(
                 challenge_id=chlg.id,
                 session_id=session.id,
+                rider_id=chlg.rider_id or session.rider_id,
                 challenge_type=chlg.challenge_type,
                 status=chlg.status,
+                level=chlg.level,
+                reason_code=chlg.reason_code,
+                cooldown_key=chlg.cooldown_key,
                 expires_at=chlg.expires_at.isoformat(),
                 created_at=chlg.created_at.isoformat(),
             )
@@ -319,7 +322,7 @@ async def get_session_timeline(session_id: str, db: Session = Depends(get_db)):
 
 
 # ==============================================================================
-# 2. Challenge Verification
+# 2. Challenge Verification & History
 # ==============================================================================
 @api_router.post(
     "/challenges/{challenge_id}/respond",
@@ -335,121 +338,112 @@ async def respond_to_challenge(
 ):
     """
     Submits proof or response for an active biometric / SMS challenge.
-    Updates challenge status, marks device trusted on OTP pass,
-    re-scores with otp_passed flag (or adds CHALLENGE_FAILED on failure),
-    and clears or escalates session.
+    Evaluates verification, executes pass restoration or escalation ladders,
+    records liveness check and audit log, and lazy-checks expiry.
     """
-    chlg = db.query(Challenge).filter(Challenge.id == challenge_id).first()
-    if not chlg:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Challenge '{challenge_id}' not found"
-        )
-
-    chlg.status = "PASSED" if body.passed else "FAILED"
-    chlg.resolved_at = utcnow()
-
-    # Record liveness check
-    lc = LivenessCheck(
-        id=f"live_{chlg.id[:8]}",
-        challenge_id=chlg.id,
-        liveness_score=body.liveness_score,
-        confidence=body.confidence,
-        passed=body.passed,
-        created_at=utcnow(),
-    )
-    db.add(lc)
-
-    # Update session status
-    session = db.query(SessionModel).filter(SessionModel.id == chlg.session_id).first()
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Session '{chlg.session_id}' not found"
-        )
+    from app.services.stepup_service import stepup_service
 
     actor = x_actor or role
-
-    if body.passed:
-        # Mark device trusted
-        device = db.query(Device).filter(Device.id == session.device_id).first()
-        if device:
-            device.trust_rating = 1.0
-            link = (
-                db.query(DeviceRider)
-                .filter(
-                    DeviceRider.device_id == device.id, DeviceRider.rider_id == session.rider_id
-                )
-                .first()
-            )
-            if link:
-                link.is_primary = True
-
-            # If rider baseline exists and device was provisional/new, mark trusted in baseline state
-            from app.models.entities import RiderBaseline
-            from app.services.baseline_service import baseline_service
-
-            baseline = (
-                db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
-            )
-            if baseline and hasattr(baseline_service, "handle_otp_passed"):
-                baseline_service.handle_otp_passed(baseline, device.fingerprint)
-        db.flush()
-
-        # Re-score with otp_passed=True and persist
-        session, assessment = session_service.handle(
-            db=db,
-            session_or_event=body.proof_payload or {},
-            session_id=session.id,
-            actor=actor,
-            role=role,
-            otp_passed=True,
-            trigger="challenge_result",
-        )
-        new_verdict = assessment.verdict
-        msg = "Challenge passed successfully. Device trusted and session restored."
-    else:
-        # Re-score with challenge_failed=True (+25 points and escalate)
-        session, assessment = session_service.handle(
-            db=db,
-            session_or_event=body.proof_payload or {},
-            session_id=session.id,
-            actor=actor,
-            role=role,
-            challenge_failed=True,
-            trigger="challenge_result",
-        )
-        new_verdict = assessment.verdict
-        msg = "Challenge failed. Session escalated to investigation queue."
-
-    audit_service.log(
-        db,
-        actor,
-        role,
-        "RESPOND_CHALLENGE",
-        "challenge",
-        chlg.id,
-        f"Result: {chlg.status}, Verified={body.passed}, Verdict={new_verdict}",
+    res = stepup_service.handle_challenge_response(
+        db=db,
+        challenge_id=challenge_id,
+        payload=body,
+        actor=actor,
+        role=role,
     )
-
     event_bus.publish(
         "challenge_resolved",
         {
-            "challenge_id": chlg.id,
-            "session_id": chlg.session_id,
-            "status": chlg.status,
-            "verdict": new_verdict,
+            "challenge_id": res.challenge_id,
+            "session_id": res.session_id,
+            "status": res.status,
+            "verdict": res.new_verdict,
         },
     )
+    return res
+
+
+@api_router.get(
+    "/challenges/{challenge_id}",
+    response_model=ChallengeResponse,
+    tags=["Challenges"],
+)
+async def get_challenge(challenge_id: str, db: Session = Depends(get_db)):
+    """
+    Retrieves a single challenge by ID with lazy expiry evaluation.
+    """
+    from app.services.stepup_service import stepup_service
+
+    ch = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not ch:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Challenge '{challenge_id}' not found"
+    stepup_service.lazy_check_expiry(ch, db)
+    db.commit()
 
     return ChallengeResponse(
-        challenge_id=chlg.id,
-        session_id=chlg.session_id,
-        challenge_type=chlg.challenge_type,
-        status=chlg.status,
-        resolved_at=chlg.resolved_at.isoformat() if chlg.resolved_at else None,
-        verified=body.passed,
-        new_verdict=new_verdict,
-        message=msg,
+        challenge_id=ch.id,
+        session_id=ch.session_id,
+        rider_id=ch.rider_id,
+        challenge_type=ch.challenge_type,
+        status=ch.status,
+        level=ch.level,
+        reason_code=ch.reason_code,
+        cooldown_key=ch.cooldown_key,
+        expires_at=ch.expires_at.isoformat() if ch.expires_at else None,
+        created_at=ch.created_at.isoformat() if ch.created_at else None,
+        resolved_at=ch.resolved_at.isoformat() if ch.resolved_at else None,
+        verified=(ch.status == "PASSED"),
     )
+
+
+@api_router.get(
+    "/riders/{rider_id}/challenges",
+    response_model=List[ChallengeResponse],
+    tags=["Challenges"],
+)
+async def list_rider_challenges(rider_id: str, db: Session = Depends(get_db)):
+    """
+    Returns step-up challenge history for a rider.
+    Performs lazy expiry evaluation on any PENDING challenge whose timeout has passed.
+    """
+    from app.services.stepup_service import stepup_service
+
+    rider = db.query(Rider).filter(Rider.id == rider_id).first()
+    if not rider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Rider '{rider_id}' not found"
+        )
+
+    challenges = (
+        db.query(Challenge)
+        .outerjoin(SessionModel, Challenge.session_id == SessionModel.id)
+        .filter((Challenge.rider_id == rider_id) | (SessionModel.rider_id == rider_id))
+        .order_by(Challenge.created_at.desc())
+        .all()
+    )
+
+    results = []
+    for ch in challenges:
+        stepup_service.lazy_check_expiry(ch, db)
+        results.append(
+            ChallengeResponse(
+                challenge_id=ch.id,
+                session_id=ch.session_id,
+                rider_id=ch.rider_id or rider_id,
+                challenge_type=ch.challenge_type,
+                status=ch.status,
+                level=ch.level,
+                reason_code=ch.reason_code,
+                cooldown_key=ch.cooldown_key,
+                expires_at=ch.expires_at.isoformat() if ch.expires_at else None,
+                created_at=ch.created_at.isoformat() if ch.created_at else None,
+                resolved_at=ch.resolved_at.isoformat() if ch.resolved_at else None,
+                verified=(ch.status == "PASSED"),
+            )
+        )
+    db.commit()
+    return results
 
 
 # ==============================================================================

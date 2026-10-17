@@ -17,7 +17,6 @@ Unified handling pipeline:
 import json
 import time
 import uuid
-from datetime import timedelta
 from typing import Any, Dict, Optional, Tuple, Union
 
 from fastapi import HTTPException, status
@@ -26,7 +25,6 @@ from sqlalchemy.orm import Session
 from app.models.entities import (
     BehaviorSnapshot,
     Case,
-    Challenge,
     Device,
     DeviceRider,
     PayoutAccount,
@@ -45,6 +43,7 @@ from app.models.entities import (
 from app.schemas.contracts import (
     AssessmentSchema,
     ChallengeSchema,
+    FactorSchema,
     SessionCreateRequest,
     SessionEventRequest,
 )
@@ -579,39 +578,63 @@ class SessionService:
 
         # 9. Band Decisions: CHALLENGE, ESCALATE, and Payout Holds
         if scored.verdict == "CHALLENGE":
-            session.status = "CHALLENGED"
-            # Create challenge record
-            chlg_id = f"chlg_{uuid.uuid4().hex[:8]}"
-            expires = utcnow() + timedelta(minutes=5)
-            chlg_type = "OTP" if scored.recommended_action == "CHALLENGE_OTP" else "FACE_LIVENESS"
-            chlg = Challenge(
-                id=chlg_id,
-                session_id=session.id,
-                challenge_type=chlg_type,
-                status="PENDING",
-                expires_at=expires,
-                created_at=utcnow(),
-            )
-            db.add(chlg)
-            db.flush()
+            from app.services.stepup_service import stepup_service
 
-            challenge_schema = ChallengeSchema(
-                challenge_id=chlg.id,
-                session_id=session.id,
-                challenge_type=chlg.challenge_type,
-                status=chlg.status,
-                expires_at=expires.isoformat(),
-                created_at=chlg.created_at.isoformat(),
+            fin_dict = payload_data.get("financial", {}) if isinstance(payload_data.get("financial"), dict) else {}
+            rider_state = {
+                "payout_lock": bool(fin_dict.get("payout_account_changed") or payload_data.get("payout_account_changed")),
+                "is_new_device": is_new_device_for_rider,
+                "threat_tags": scored.threat_tags,
+            }
+            chlg, suppression_reason = stepup_service.create_or_suppress_challenge(
+                db=db,
+                session=session,
+                assessment=scored,
+                rider=rider,
+                rider_state=rider_state,
+                actor=actor,
+                role=role,
             )
-            audit_service.log(
-                db,
-                actor,
-                role,
-                "CREATE_CHALLENGE",
-                "challenge",
-                chlg.id,
-                f"Verdict: CHALLENGE ({chlg_type})",
-            )
+
+            if chlg:
+                challenge_schema = ChallengeSchema(
+                    challenge_id=chlg.id,
+                    session_id=session.id,
+                    rider_id=rider.id,
+                    challenge_type=chlg.challenge_type,
+                    status=chlg.status,
+                    level=chlg.level,
+                    reason_code=chlg.reason_code,
+                    cooldown_key=chlg.cooldown_key,
+                    suppression_reason=suppression_reason,
+                    expires_at=chlg.expires_at.isoformat(),
+                    created_at=chlg.created_at.isoformat(),
+                )
+
+                if suppression_reason:
+                    supp_factor = FactorSchema(
+                        name="Challenge Suppression",
+                        category="POLICY",
+                        impact="POSITIVE",
+                        weight=0.0,
+                        score=1.0,
+                        description=f"Challenge suppressed: {suppression_reason}",
+                        code="CHALLENGE_SUPPRESSED",
+                    )
+                    scored.factors.append(supp_factor)
+                    db.add(
+                        RiskFactor(
+                            id=f"factor_{uuid.uuid4().hex[:8]}",
+                            assessment_id=assessment.id,
+                            name=supp_factor.name,
+                            category=supp_factor.category,
+                            impact=supp_factor.impact,
+                            weight=supp_factor.weight,
+                            score=supp_factor.score,
+                            description=supp_factor.description,
+                        )
+                    )
+>>>>>>> 521b8ea (feat(stepup): implement stepup service, challenge ladder, cooldowns, and scenario S1)
 
         elif scored.verdict == "ESCALATE":
             session.status = "ESCALATED"
