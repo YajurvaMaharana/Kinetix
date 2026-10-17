@@ -201,6 +201,16 @@ class SessionService:
                 req.location.model_dump() if hasattr(req.location, "model_dump") else req.location
             )
 
+        from app.services.graph_service import graph_service
+
+        graph_service.add_session_entities(
+            rider_id=req.rider_id,
+            device_id=device.fingerprint
+            if (device and device.fingerprint)
+            else (device.id if device else None),
+            ip_address=req.ip_address,
+        )
+
         ctx = ScoringContext(
             request_or_event=req,
             baseline=baseline,

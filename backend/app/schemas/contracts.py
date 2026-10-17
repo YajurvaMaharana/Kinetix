@@ -13,6 +13,7 @@ class FactorSchema(BaseModel):
     weight: float
     score: float
     description: str
+    code: Optional[str] = None
 
 
 class ChallengeSchema(BaseModel):
@@ -239,3 +240,23 @@ class MetricsSummaryResponse(BaseModel):
     open_cases: int
     avg_latency_ms: float
     health_status: str
+
+
+# ------------------------------------------------------------------------------
+# Fraud Syndicate Graph Schemas (D3 format)
+# ------------------------------------------------------------------------------
+class GraphNodeSchema(BaseModel):
+    id: str
+    type: str
+    label: str
+
+
+class GraphEdgeSchema(BaseModel):
+    source: str
+    target: str
+    relationship: str
+
+
+class GraphResponse(BaseModel):
+    nodes: List[GraphNodeSchema] = Field(default_factory=list)
+    edges: List[GraphEdgeSchema] = Field(default_factory=list)
