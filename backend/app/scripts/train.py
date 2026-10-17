@@ -86,6 +86,12 @@ def train_model():
     joblib.dump(clf, out_path)
     print(f"[OK] Serialized model saved to: {out_path}")
 
+    # Also train and export the 16-D Isolation Forest anomaly artifact
+    from ml.train import train_isolation_forest
+    print("[*] Training Isolation Forest anomaly detector on genuine baseline distribution...")
+    iforest_path = train_isolation_forest()
+    print(f"[OK] Isolation Forest artifact saved to: {iforest_path}")
+
 
 if __name__ == "__main__":
     train_model()

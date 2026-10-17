@@ -63,7 +63,7 @@ async def test_session_happy_path():
         data = res.json()
         assert data["session"]["id"] == "sess_happy_01"
         assert data["assessment"]["verdict"] == "ALLOW"
-        assert data["assessment"]["risk_score"] == 10.0  # STUB trusted device risk
+        assert 0.0 <= data["assessment"]["risk_score"] <= 24.0
         assert data["assessment"]["risk_tier"] == "LOW"
         assert data["assessment"]["latency_ms"] > 0
 
@@ -72,7 +72,7 @@ async def test_session_happy_path():
         assert get_res.status_code == 200
         get_data = get_res.json()
         assert get_data["id"] == "sess_happy_01"
-        assert get_data["current_risk_score"] == 10.0
+        assert 0.0 <= get_data["current_risk_score"] <= 24.0
         assert get_data["latest_assessment"]["verdict"] == "ALLOW"
 
 
@@ -148,11 +148,11 @@ async def test_challenge_workflow():
     """
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Trigger challenge via biometrics face divergence
+        # Trigger challenge via telemetry mock location (GPS_SPOOFING floor 60 -> CHALLENGE)
         payload = {
             "session_id": "sess_chlg_01",
             "rider_id": "rider_chlg_01",
-            "biometrics": {"face_match_confidence": 0.25},  # Low face similarity
+            "telemetry": {"mock_location_detected": True},
         }
         res = await client.post("/sessions", json=payload, headers={"X-Role": "admin"})
         assert res.status_code == 201
@@ -189,7 +189,7 @@ async def test_case_escalation_and_patch():
         payload = {
             "session_id": "sess_esc_01",
             "rider_id": "rider_esc_01",
-            "device_passport": {"mock_location_detected": True},
+            "biometrics": {"face_match_confidence": 0.20},  # FACE_MISMATCH floor 75 -> ESCALATE
         }
         res = await client.post("/sessions", json=payload, headers={"X-Role": "admin"})
         assert res.status_code == 201

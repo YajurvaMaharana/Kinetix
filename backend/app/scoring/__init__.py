@@ -1,9 +1,21 @@
-"""
-TrustJuggler Scoring Package.
-All risk scoring, machine learning, heuristic evaluation, and feature extraction
-MUST reside exclusively in this package.
+"""TrustJuggler Scoring Package.
+
+Exposes real-time multi-modal risk scoring, feature extractors, anomaly detection,
+rule hooks, explainability decomposition, and threshold configurations.
 """
 
+from app.scoring.anomaly import (
+    ANOMALY_FEATURE_NAMES,
+    build_anomaly_vector,
+    load_isolation_forest,
+    score_anomaly,
+)
+from app.scoring.explain import (
+    ExplanationFactor,
+    ExplanationResult,
+    generate_explanation,
+    generate_rider_safe_text,
+)
 from app.scoring.features import (
     BehaviorDeviationResult,
     MetricRecord,
@@ -18,14 +30,29 @@ from app.scoring.features import (
     trust_health_bonus,
     trusted_device_signal,
 )
-from app.scoring.risk import ScoredAssessment, ScoringContext, score_session
-from app.scoring.rules import RuleEvaluationResult, RuleMatch, evaluate_rules
+from app.scoring.risk import (
+    Assessment,
+    ScoredAssessment,
+    ScoringContext,
+    extract_device_risk,
+    extract_graph_risk,
+    extract_travel_risk,
+    extract_trust_health,
+    score_session,
+)
+from app.scoring.rules import (
+    RuleEvaluationResult,
+    RuleHit,
+    RuleMatch,
+    evaluate_rules,
+)
 from app.scoring.thresholds import DEFAULT_THRESHOLDS, ThresholdConfig
 
 __all__ = [
     "ScoringContext",
     "score_session",
     "ScoredAssessment",
+    "Assessment",
     "ThresholdConfig",
     "DEFAULT_THRESHOLDS",
     "robust_z",
@@ -40,7 +67,20 @@ __all__ = [
     "ewma_drift",
     "BehaviorDeviationResult",
     "MetricRecord",
-    "evaluate_rules",
+    "build_anomaly_vector",
+    "score_anomaly",
+    "load_isolation_forest",
+    "ANOMALY_FEATURE_NAMES",
+    "RuleHit",
     "RuleMatch",
     "RuleEvaluationResult",
+    "evaluate_rules",
+    "ExplanationFactor",
+    "ExplanationResult",
+    "generate_explanation",
+    "generate_rider_safe_text",
+    "extract_device_risk",
+    "extract_travel_risk",
+    "extract_graph_risk",
+    "extract_trust_health",
 ]
