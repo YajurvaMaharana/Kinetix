@@ -51,6 +51,7 @@ class ScoringContext:
     active_policy: Optional[Any] = None
     device_risk: float = 0.0
     travel_risk: float = 0.0
+    graph_risk: float = 0.0
     previous_risk_score: Optional[float] = None
     location_pings: Optional[List[Any]] = None
     previous_location: Optional[Dict[str, Any]] = None
@@ -115,10 +116,12 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     # 4. Device and Travel Inputs
     device_risk = extract_device_risk(ctx)
     from app.scoring.travel import evaluate_travel
+    from app.services.graph_service import evaluate_graph
 
     travel_eval = evaluate_travel(ctx, cfg)
     travel_risk = max(float(getattr(ctx, "travel_risk", 0.0) or 0.0), travel_eval.travel_risk)
-    graph_risk = extract_graph_risk(ctx)
+    graph_eval = evaluate_graph(ctx, cfg)
+    graph_risk = max(float(getattr(ctx, "graph_risk", 0.0) or 0.0), graph_eval.graph_risk)
 
     # Flags for vector construction
     new_device_flag = 1.0 if dev_res.is_new_device else 0.0
@@ -139,7 +142,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     anomaly_score = score_anomaly(anom_vec)
 
     # 6. Deterministic Security Rules
-    rule_res = evaluate_rules(ctx, cfg, travel_eval=travel_eval)
+    rule_res = evaluate_rules(ctx, cfg, travel_eval=travel_eval, graph_eval=graph_eval)
 
     # 7. Mitigations (only apply when not an active security rule violation or severe account takeover)
     trust_health_val = extract_trust_health(ctx)
@@ -347,6 +350,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         "travel_risk": travel_risk,
         "travel_factors": travel_eval.factors,
         "graph_risk": graph_risk,
+        "graph_factors": graph_eval.factors,
         "continuity": continuity,
         "known_zone_share": known_zone,
         "trust_health": trust_health_val,
@@ -380,6 +384,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
                 weight=round(abs(f.points) / 100.0, 3),
                 score=round(max(0.0, 1.0 - (f.points / 100.0)), 2),
                 description=f.explanation,
+                code=f.code,
             )
         )
 
@@ -393,6 +398,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
                 weight=round(abs(m.points) / 100.0, 3),
                 score=round(min(1.0, abs(m.points) / 12.0), 2),
                 description=m.explanation,
+                code=m.code,
             )
         )
 
@@ -462,18 +468,12 @@ def extract_travel_risk(ctx: ScoringContext) -> float:
 
 def extract_graph_risk(ctx: ScoringContext) -> float:
     """Interface for Fraud Syndicate Graph integration."""
-    if ctx.graph_stats and isinstance(ctx.graph_stats, dict):
-        return float(ctx.graph_stats.get("risk_score", 0.0))
-    req = _extract_dict(ctx.request_or_event)
-    telem = _extract_dict(req.get("telemetry", {})) or req
-    try:
-        shared_dev = int(telem.get("shared_device_count") or req.get("shared_device_count") or 1)
-        shared_pay = int(telem.get("shared_payout_count") or req.get("shared_payout_count") or 1)
-    except (ValueError, TypeError):
-        shared_dev, shared_pay = 1, 1
-    if shared_dev >= 3 or shared_pay >= 3 or "FRAUD_RING" in str(req.get("threat_tags", "")):
-        return 0.90
-    return 0.0
+    if hasattr(ctx, "graph_risk") and ctx.graph_risk is not None and ctx.graph_risk > 0.0:
+        return float(ctx.graph_risk)
+    from app.services.graph_service import evaluate_graph
+
+    graph_eval = evaluate_graph(ctx)
+    return graph_eval.graph_risk
 
 
 def extract_trust_health(ctx: ScoringContext) -> float:
