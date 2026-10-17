@@ -29,7 +29,6 @@ from app.scoring.features import (
     known_zone_share,
     sensitive_actions,
     trust_health_bonus,
-    trusted_device_signal,
 )
 from app.scoring.rules import evaluate_rules
 from app.scoring.thresholds import ThresholdConfig
@@ -114,9 +113,16 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     sens = sensitive_actions(ctx, cfg)
 
     # 4. Device and Travel Inputs
-    device_risk = extract_device_risk(ctx)
+    from app.scoring.device import evaluate_device
     from app.scoring.travel import evaluate_travel
     from app.services.graph_service import evaluate_graph
+
+    device_eval = evaluate_device(
+        ctx.device_passport or req_dict.get("device_passport") or req_dict.get("device") or req_dict,
+        is_new_device=dev_res.is_new_device,
+        baseline=ctx.baseline,
+    )
+    device_risk = max(float(getattr(ctx, "device_risk", 0.0) or 0.0), device_eval.device_risk)
 
     travel_eval = evaluate_travel(ctx, cfg)
     travel_risk = max(float(getattr(ctx, "travel_risk", 0.0) or 0.0), travel_eval.travel_risk)
@@ -163,9 +169,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     else:
         continuity = behavior_continuity(behavior_dev, cfg.behavior_continuity_threshold)
         known_zone = known_zone_share(zone_id, ctx.baseline)
-        trusted_dev = trusted_device_signal(
-            ctx.device_passport, dev_res.is_new_device, baseline=ctx.baseline
-        )
+        trusted_dev = device_eval.trusted_device_signal
         health_bonus = trust_health_bonus(trust_health_val)
 
     # 8. Compute Point Components
@@ -394,6 +398,21 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
             )
         )
 
+    # Attach pure device factor records (DEVICE_EMULATOR, DEVICE_ROOTED, MOCK_LOCATION, DEVICE_MULTI_ACCOUNT, POOR_NETWORK_REPUTATION)
+    for df in device_eval.factors:
+        if not any(fs.code == df.code for fs in factors_schema):
+            factors_schema.append(
+                FactorSchema(
+                    name=df.name,
+                    category=df.category.upper(),
+                    impact="NEGATIVE",
+                    weight=round(df.weight, 3),
+                    score=round(df.score, 2),
+                    description=df.explanation,
+                    code=df.code,
+                )
+            )
+
     mitigating_schema: List[FactorSchema] = []
     for m in explanation_res.mitigating_factors:
         mitigating_schema.append(
@@ -440,24 +459,21 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 # ------------------------------------------------------------------------------
 def extract_device_risk(ctx: ScoringContext) -> float:
     """
-    Interface for Prompt 7 Device Passport integration.
-    Stubs to 0.0 unless provided explicitly in context or hardware passport.
+    Evaluates device risk using pure scoring/device.py engine.
     """
     if hasattr(ctx, "device_risk") and ctx.device_risk is not None and ctx.device_risk > 0.0:
         return float(ctx.device_risk)
+    from app.scoring.device import evaluate_device
+
     req = _extract_dict(ctx.request_or_event)
-    dev = _extract_dict(
-        req.get("device_passport") or req.get("device") or getattr(ctx, "device_passport", {})
+    dev_target = (
+        getattr(ctx, "device_passport", None)
+        or req.get("device_passport")
+        or req.get("device")
+        or req
     )
-    is_emu = bool(
-        dev.get("is_emulator") or req.get("is_emulator") or req.get("is_emulator") in (1, "1", True)
-    )
-    is_root = bool(
-        dev.get("is_rooted") or req.get("is_rooted") or req.get("is_rooted") in (1, "1", True)
-    )
-    if is_emu or is_root:
-        return 0.85
-    return 0.0
+    device_eval = evaluate_device(dev_target)
+    return device_eval.device_risk
 
 
 def extract_travel_risk(ctx: ScoringContext) -> float:

@@ -66,6 +66,11 @@ class Device(Base):
     app_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     is_emulator: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_rooted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    mock_location_seen: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    network_reputation: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    passport_score: Mapped[float] = mapped_column(Float, default=100.0, nullable=False)
+    trust_level: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
+    streak_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     trust_rating: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
@@ -73,6 +78,14 @@ class Device(Base):
     device_riders: Mapped[List["DeviceRider"]] = relationship(
         "DeviceRider", back_populates="device"
     )
+
+    @property
+    def linked_rider_count(self) -> int:
+        try:
+            return len(self.device_riders) if self.device_riders is not None else 0
+        except Exception:
+            return 0
+
 
 
 class DeviceRider(Base):

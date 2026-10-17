@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -35,10 +35,12 @@ from app.schemas.contracts import (
     ChallengeResponse,
     ChallengeSchema,
     DevicePassportResponse,
+    DeviceRecentSession,
     DeviceResponse,
     FactorSchema,
     GraphResponse,
     InvestigationPayload,
+    LinkedRiderInfo,
     MetricsSummaryResponse,
     RiderResponse,
     SessionCreateRequest,
@@ -554,26 +556,55 @@ async def get_rider_timeline(rider_id: str, db: Session = Depends(get_db)):
 # 4. Devices & Hardware Passports
 # ==============================================================================
 @api_router.get("/devices", response_model=List[DeviceResponse], tags=["Devices"])
-async def list_devices(db: Session = Depends(get_db)):
+async def list_devices(
+    trust_level: Optional[str] = Query(None, description="Filter by trust level: new, provisional, trusted, blocked"),
+    linked_riders_gt1: Optional[bool] = Query(None, alias="linked_riders>1"),
+    linked_riders: Optional[str] = Query(None, description="Filter by linked riders criteria, e.g. '>1'"),
+    db: Session = Depends(get_db),
+):
     """
-    Lists known devices with tokenized fingerprints.
+    Lists known devices with tokenized fingerprints and optional trust_level and linked_riders>1 filters.
     """
-    devices = db.query(Device).order_by(Device.last_seen_at.desc()).limit(100).all()
-    return [
-        DeviceResponse(
-            id=d.id,
-            fingerprint=d.fingerprint,  # Strictly tokenized
-            model=d.model,
-            os_version=d.os_version,
-            app_version=d.app_version,
-            is_emulator=d.is_emulator,
-            is_rooted=d.is_rooted,
-            trust_rating=d.trust_rating,
-            created_at=d.created_at.isoformat(),
-            last_seen_at=d.last_seen_at.isoformat(),
+    from sqlalchemy import func
+
+    q = db.query(Device)
+    if trust_level:
+        q = q.filter(Device.trust_level == trust_level.strip().lower())
+
+    filter_gt_1 = linked_riders_gt1 is True or linked_riders in (">1", "1", "gt1")
+    if filter_gt_1:
+        subq = (
+            db.query(DeviceRider.device_id)
+            .group_by(DeviceRider.device_id)
+            .having(func.count(DeviceRider.rider_id) > 1)
+            .subquery()
         )
-        for d in devices
-    ]
+        q = q.filter(Device.id.in_(subq.select()))
+
+    devices = q.order_by(Device.last_seen_at.desc()).limit(100).all()
+    results = []
+    for d in devices:
+        count = db.query(DeviceRider).filter(DeviceRider.device_id == d.id).count()
+        results.append(
+            DeviceResponse(
+                id=d.id,
+                fingerprint=d.fingerprint,  # Strictly tokenized
+                model=d.model,
+                os_version=d.os_version,
+                app_version=d.app_version,
+                is_emulator=d.is_emulator,
+                is_rooted=d.is_rooted,
+                mock_location_seen=getattr(d, "mock_location_seen", False),
+                network_reputation=getattr(d, "network_reputation", 1.0),
+                passport_score=getattr(d, "passport_score", 100.0),
+                trust_level=getattr(d, "trust_level", "new"),
+                linked_rider_count=count,
+                trust_rating=d.trust_rating,
+                created_at=d.created_at.isoformat(),
+                last_seen_at=d.last_seen_at.isoformat(),
+            )
+        )
+    return results
 
 
 @api_router.get(
@@ -581,10 +612,17 @@ async def list_devices(db: Session = Depends(get_db)):
     response_model=DevicePassportResponse,
     tags=["Devices"],
 )
-async def get_device_passport(device_id: str, db: Session = Depends(get_db)):
+async def get_device_passport(
+    device_id: str,
+    role: str = Depends(get_role),
+    db: Session = Depends(get_db),
+):
     """
-    Inspects hardware attestation passport and associated identities count.
+    Inspects hardware attestation passport, linked riders (masked for analyst),
+    recent sessions, and risk factors.
     """
+    from app.scoring.device import evaluate_device
+
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         # Check by tokenized fingerprint match
@@ -594,18 +632,120 @@ async def get_device_passport(device_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Device '{device_id}' not found"
         )
 
-    associated_count = db.query(DeviceRider).filter(DeviceRider.device_id == device.id).count()
+    # 1. Linked Riders (masked for role=analyst)
+    is_analyst = (role == "analyst")
+    links = db.query(DeviceRider).filter(DeviceRider.device_id == device.id).all()
+    associated_count = len(links)
+
+    linked_riders: List[LinkedRiderInfo] = []
+    for lnk in links:
+        rider = db.query(Rider).filter(Rider.id == lnk.rider_id).first()
+        disp_name = (
+            mask_name(rider.display_name) if is_analyst else rider.display_name
+        ) if rider else None
+        phone = (
+            mask_phone(rider.phone_number) if is_analyst else rider.phone_number
+        ) if rider else None
+
+        linked_riders.append(
+            LinkedRiderInfo(
+                rider_id=lnk.rider_id,
+                display_name=disp_name,
+                phone_number=phone,
+                is_primary=lnk.is_primary,
+                first_used_at=lnk.first_used_at.isoformat(),
+                last_used_at=lnk.last_used_at.isoformat(),
+            )
+        )
+
+    # 2. Recent Sessions
+    recent_sessions_db = (
+        db.query(SessionModel)
+        .filter(SessionModel.device_id == device.id)
+        .order_by(SessionModel.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    recent_sessions: List[DeviceRecentSession] = [
+        DeviceRecentSession(
+            session_id=s.id,
+            rider_id=s.rider_id,
+            status=s.status,
+            risk_score=s.current_risk_score,
+            verdict=s.current_verdict,
+            created_at=s.created_at.isoformat(),
+        )
+        for s in recent_sessions_db
+    ]
+
+    # 3. Pure Risk Factors
+    dev_eval = evaluate_device(
+        {
+            "is_emulator": device.is_emulator,
+            "is_rooted": device.is_rooted,
+            "mock_location_seen": device.mock_location_seen,
+            "linked_rider_count": associated_count,
+            "network_reputation": device.network_reputation,
+            "trust_level": device.trust_level,
+            "trust_rating": device.trust_rating,
+        }
+    )
+    factors_schema: List[FactorSchema] = [
+        FactorSchema(
+            name=f.name,
+            category=f.category.upper(),
+            impact="NEGATIVE",
+            weight=round(f.weight, 3),
+            score=round(f.score, 2),
+            description=f.explanation,
+            code=f.code,
+        )
+        for f in dev_eval.factors
+    ]
+
+    passport_dict = {
+        "device_id": device.id,
+        "tokenized_fingerprint": device.fingerprint,
+        "model": device.model,
+        "os_version": device.os_version,
+        "app_version": device.app_version,
+        "is_emulator": device.is_emulator,
+        "is_rooted": device.is_rooted,
+        "mock_location_seen": getattr(device, "mock_location_seen", False),
+        "network_reputation": getattr(device, "network_reputation", 1.0),
+        "passport_score": getattr(device, "passport_score", 100.0),
+        "trust_level": getattr(device, "trust_level", "new"),
+        "trust_rating": device.trust_rating,
+        "associated_riders_count": associated_count,
+        "linked_rider_count": associated_count,
+        "streak_count": getattr(device, "streak_count", 0),
+        "first_seen": device.created_at.isoformat(),
+        "last_seen": device.last_seen_at.isoformat(),
+    }
 
     return DevicePassportResponse(
         device_id=device.id,
         tokenized_fingerprint=device.fingerprint,
-        trust_rating=device.trust_rating,
+        model=device.model,
+        os_version=device.os_version,
+        app_version=device.app_version,
         is_emulator=device.is_emulator,
         is_rooted=device.is_rooted,
+        mock_location_seen=getattr(device, "mock_location_seen", False),
+        network_reputation=getattr(device, "network_reputation", 1.0),
+        passport_score=getattr(device, "passport_score", 100.0),
+        trust_level=getattr(device, "trust_level", "new"),
+        trust_rating=device.trust_rating,
         associated_riders_count=associated_count,
+        linked_rider_count=associated_count,
         first_seen=device.created_at.isoformat(),
         last_seen=device.last_seen_at.isoformat(),
+        passport=passport_dict,
+        linked_riders=linked_riders,
+        recent_sessions=recent_sessions,
+        risk_factors=factors_schema,
     )
+
 
 
 # ==============================================================================

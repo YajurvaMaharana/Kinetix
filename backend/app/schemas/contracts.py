@@ -182,20 +182,55 @@ class DeviceResponse(BaseModel):
     app_version: Optional[str] = None
     is_emulator: bool
     is_rooted: bool
+    mock_location_seen: bool = False
+    network_reputation: float = 1.0
+    passport_score: float = 100.0
+    trust_level: str = "new"
+    linked_rider_count: int = 1
     trust_rating: float
     created_at: str
     last_seen_at: str
 
 
+class LinkedRiderInfo(BaseModel):
+    rider_id: str
+    display_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    is_primary: bool = False
+    first_used_at: str
+    last_used_at: str
+
+
+class DeviceRecentSession(BaseModel):
+    session_id: str
+    rider_id: str
+    status: str
+    risk_score: Optional[float] = None
+    verdict: Optional[str] = None
+    created_at: str
+
+
 class DevicePassportResponse(BaseModel):
     device_id: str
     tokenized_fingerprint: str
-    trust_rating: float
+    model: Optional[str] = None
+    os_version: Optional[str] = None
+    app_version: Optional[str] = None
     is_emulator: bool
     is_rooted: bool
-    associated_riders_count: int
+    mock_location_seen: bool = False
+    network_reputation: float = 1.0
+    passport_score: float = 100.0
+    trust_level: str = "new"
+    trust_rating: float = 1.0
+    associated_riders_count: int = 1
+    linked_rider_count: int = 1
     first_seen: str
     last_seen: str
+    passport: Optional[Dict[str, Any]] = None
+    linked_riders: List[LinkedRiderInfo] = Field(default_factory=list)
+    recent_sessions: List[DeviceRecentSession] = Field(default_factory=list)
+    risk_factors: List[FactorSchema] = Field(default_factory=list)
 
 
 # ------------------------------------------------------------------------------

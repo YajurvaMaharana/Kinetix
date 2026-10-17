@@ -150,7 +150,11 @@ class SessionService:
         rider_id: str,
         fingerprint_raw: Optional[str],
         device_meta: Optional[Dict[str, Any]] = None,
+        actor: str = "system",
+        role: str = "system",
     ) -> Device:
+        from app.services.device_service import device_service
+
         meta = device_meta or {}
         # If no explicit fingerprint provided, retrieve rider's existing primary device if present
         if not fingerprint_raw or fingerprint_raw == f"dev_default_{rider_id}":
@@ -164,60 +168,17 @@ class SessionService:
                 if primary_dev:
                     return primary_dev
 
-        # Strictly tokenize raw hardware fingerprint at edge before persistence
-        tokenized_fp = tokenize(fingerprint_raw or f"dev_default_{rider_id}")
-
-        device = db.query(Device).filter(Device.fingerprint == tokenized_fp).first()
-        if not device:
-            is_emulator = bool(
-                meta.get("is_emulator")
-                or meta.get("mock_location_detected")
-                or meta.get("is_emulator") in (1, "1", True)
-            )
-            is_rooted = bool(
-                meta.get("is_rooted")
-                or meta.get("rooted_or_jailbroken")
-                or meta.get("is_rooted") in (1, "1", True)
-            )
-            device = Device(
-                id=f"dev_{tokenized_fp[:10]}",
-                fingerprint=tokenized_fp,
-                model=meta.get("device_model") or meta.get("model") or "Smartphone",
-                os_version=meta.get("os_version") or "Android 14",
-                app_version=meta.get("app_version") or "2.4.1",
-                is_emulator=is_emulator,
-                is_rooted=is_rooted,
-                trust_rating=0.4 if (is_emulator or is_rooted) else 1.0,
-                created_at=utcnow(),
-                last_seen_at=utcnow(),
-            )
-            db.add(device)
-            db.flush()
-
-        # Link DeviceRider
-        link = (
-            db.query(DeviceRider)
-            .filter(DeviceRider.device_id == device.id, DeviceRider.rider_id == rider_id)
-            .first()
+        return device_service.upsert_passport(
+            db=db,
+            session_ctx={
+                "rider_id": rider_id,
+                "raw_fingerprint": fingerprint_raw,
+                "device_passport": meta,
+                **meta,
+            },
+            actor=actor,
+            role=role,
         )
-        if not link:
-            existing_primary = (
-                db.query(DeviceRider)
-                .filter(DeviceRider.rider_id == rider_id, DeviceRider.is_primary.is_(True))
-                .first()
-            )
-            link = DeviceRider(
-                id=f"dr_{uuid.uuid4().hex[:8]}",
-                device_id=device.id,
-                rider_id=rider_id,
-                is_primary=(existing_primary is None),
-                first_used_at=utcnow(),
-                last_used_at=utcnow(),
-            )
-            db.add(link)
-            db.flush()
-
-        return device
 
     @staticmethod
     def get_graph_stats(db: Session, rider_id: str, device_id: Optional[str]) -> Dict[str, Any]:
@@ -371,6 +332,27 @@ class SessionService:
             )
             payload_data = req_dict.get("payload", req_dict)
             validate_payload_ranges(payload_data)
+
+            # Update Device Trust Passport with event telemetry or challenge resolution
+            from app.services.device_service import device_service
+
+            device = device_service.upsert_passport(
+                db=db,
+                session_ctx={
+                    "rider_id": rider.id,
+                    "device_passport": payload_data.get("device_passport")
+                    or payload_data.get("device")
+                    or {},
+                    "raw_fingerprint": getattr(device, "fingerprint", None),
+                    "ip_address": session.ip_address,
+                    "event_type": event_type,
+                    "otp_passed": otp_passed,
+                    "challenge_failed": challenge_failed,
+                    **payload_data,
+                },
+                actor=actor,
+                role=role,
+            )
 
             dr_link = (
                 db.query(DeviceRider)

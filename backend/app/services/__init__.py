@@ -1,5 +1,4 @@
-"""Domain business logic and verification services."""
-
+from app.services.device_service import DeviceService, device_service
 from app.services.graph_service import (
     FraudGraphService,
     GraphEvaluationResult,
@@ -9,9 +8,12 @@ from app.services.graph_service import (
 )
 
 __all__ = [
+    "DeviceService",
+    "device_service",
     "FraudGraphService",
     "graph_service",
     "evaluate_graph",
     "GraphEvaluationResult",
     "GraphFactor",
 ]
+
