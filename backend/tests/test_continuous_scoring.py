@@ -104,15 +104,17 @@ def setup_db():
         home_lng=72.8295,
         typical_hours="09:00 - 18:00",
         metrics_json=json.dumps({"metrics": computed["metrics"], "sessions_count": 30}),
-        profiles_json=json.dumps({
-            "recent_sessions": sample_normal_sessions,
-            "zone_profile": computed["zone_profile"],
-            "hour_profile": computed["hour_profile"],
-            "nav_profile": computed["nav_profile"],
-            "usual_cities": ["mumbai"],
-            "asns": ["AS55836"],
-            "home_city": "mumbai",
-        }),
+        profiles_json=json.dumps(
+            {
+                "recent_sessions": sample_normal_sessions,
+                "zone_profile": computed["zone_profile"],
+                "hour_profile": computed["hour_profile"],
+                "nav_profile": computed["nav_profile"],
+                "usual_cities": ["mumbai"],
+                "asns": ["AS55836"],
+                "home_city": "mumbai",
+            }
+        ),
     )
     trust = RiderTrustScore(
         id="trust_continuous_01",
@@ -270,7 +272,7 @@ async def test_mid_session_behavior_shift_spike_and_decay():
                 "payload": {
                     "biometrics": {
                         "tap_interval_ms": 750.0,  # 4x baseline
-                        "typing_cps": 1.1,         # 1/4 baseline
+                        "typing_cps": 1.1,  # 1/4 baseline
                         "swipe_velocity_px_s": 3200.0,
                         "interaction_timing_cv": 0.95,
                     },
@@ -423,7 +425,9 @@ async def test_baseline_updates_only_on_ordinary_change():
     """
     transport = ASGITransport(app=app)
     db = TestingSessionLocal()
-    b_before = db.query(RiderBaseline).filter(RiderBaseline.rider_id == "rider_continuous_01").first()
+    b_before = (
+        db.query(RiderBaseline).filter(RiderBaseline.rider_id == "rider_continuous_01").first()
+    )
     before_updated_at = b_before.updated_at
     db.close()
 
@@ -440,7 +444,9 @@ async def test_baseline_updates_only_on_ordinary_change():
         )
 
         db = TestingSessionLocal()
-        b_after_norm = db.query(RiderBaseline).filter(RiderBaseline.rider_id == "rider_continuous_01").first()
+        b_after_norm = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == "rider_continuous_01").first()
+        )
         assert b_after_norm.updated_at == before_updated_at
         db.close()
 
@@ -457,7 +463,9 @@ async def test_baseline_updates_only_on_ordinary_change():
         )
 
         db = TestingSessionLocal()
-        b_after_ord = db.query(RiderBaseline).filter(RiderBaseline.rider_id == "rider_continuous_01").first()
+        b_after_ord = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == "rider_continuous_01").first()
+        )
         assert b_after_ord.updated_at >= before_updated_at
         db.close()
 

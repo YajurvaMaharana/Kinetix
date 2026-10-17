@@ -118,7 +118,10 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     from app.services.graph_service import evaluate_graph
 
     device_eval = evaluate_device(
-        ctx.device_passport or req_dict.get("device_passport") or req_dict.get("device") or req_dict,
+        ctx.device_passport
+        or req_dict.get("device_passport")
+        or req_dict.get("device")
+        or req_dict,
         is_new_device=dev_res.is_new_device,
         baseline=ctx.baseline,
     )
@@ -297,6 +300,16 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     final_risk = round(max(0.0, min(100.0, final_risk)), 1)
     trust_score = round(max(0.0, min(100.0, 100.0 - final_risk)), 1)
 
+    # 12. Decision Bands Personalized by Trust Health (+/- 5 points)
+    # ESCALATE (75) and rule floors NEVER move
+    from app.scoring.trust import compute_boundary_shift
+
+    health_shift = compute_boundary_shift(trust_health_val)
+    allow_threshold = cfg.allow_threshold + health_shift
+    monitor_threshold = cfg.monitor_threshold + health_shift
+    challenge_otp_threshold = cfg.challenge_otp_threshold + health_shift
+    escalate_threshold = cfg.escalate_threshold  # Invariant: Never moves
+
     if final_risk <= allow_threshold:
         verdict = "ALLOW"
         risk_tier = "LOW"
@@ -308,14 +321,13 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     elif final_risk < escalate_threshold:
         verdict = "CHALLENGE"
         risk_tier = "HIGH"
-        if final_risk <= challenge_otp_threshold:
-            recommended_action = "CHALLENGE_OTP"
-        else:
-            recommended_action = "CHALLENGE_LIVENESS"
+        recommended_action = (
+            "CHALLENGE_OTP" if final_risk <= challenge_otp_threshold else "CHALLENGE_SELFIE"
+        )
     else:
         verdict = "ESCALATE"
         risk_tier = "CRITICAL"
-        recommended_action = "ESCALATE_RESTRICT_AND_CASE"
+        recommended_action = "ESCALATE"
 
     if bool(req_dict.get("otp_passed")):
         final_risk = min(final_risk, allow_threshold - 5.0)

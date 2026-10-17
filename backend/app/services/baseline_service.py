@@ -97,7 +97,9 @@ def load_baseline(db: Session, rider_id: str) -> Optional[Dict[str, Any]]:
     home_lat = float(b_record.home_lat or profiles_dict.get("home_lat", 19.0760))
     home_lng = float(b_record.home_lng or profiles_dict.get("home_lng", 72.8777))
     home_city = str(profiles_dict.get("home_city") or "mumbai").strip().lower()
-    typical_hours = str(b_record.typical_hours or profiles_dict.get("typical_hours", "09:00 - 18:00"))
+    typical_hours = str(
+        b_record.typical_hours or profiles_dict.get("typical_hours", "09:00 - 18:00")
+    )
 
     zone_profile = profiles_dict.get("zone_profile", {})
     hour_profile = profiles_dict.get("hour_profile", {"mean": 11.0, "sd": 2.0})
@@ -314,7 +316,9 @@ def build_history_context(
         and prev_lng is not None
         and prev_time is not None
     ):
-        dist_km = haversine_distance(float(prev_lat), float(prev_lng), float(curr_lat), float(curr_lng))
+        dist_km = haversine_distance(
+            float(prev_lat), float(prev_lng), float(curr_lat), float(curr_lng)
+        )
         delta_sec = max(0.1, abs((curr_time - prev_time).total_seconds()))
         delta_hours = delta_sec / 3600.0
         speed_between_pings = round(dist_km / delta_hours, 1)

@@ -131,7 +131,9 @@ def load_eval_dataset(csv_path: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Loads 400 held-out evaluation sessions from eval.csv."""
     path = resolve_eval_csv_path(csv_path)
     if not path.exists():
-        raise FileNotFoundError(f"Evaluation dataset not found at {path}. Run simulator seed_cli first.")
+        raise FileNotFoundError(
+            f"Evaluation dataset not found at {path}. Run simulator seed_cli first."
+        )
 
     rows: List[Dict[str, Any]] = []
     with open(path, "r", encoding="utf-8") as f:
@@ -177,7 +179,11 @@ def precompute_eval_sessions(
         env_change = 0.5 if (r.get("city") and r.get("city") != "Bengaluru") else 0.0
         new_dev = 1.0 if "secondary" in str(r.get("device_id", "")) else 0.0
         new_city = 1.0 if (r.get("city") and r.get("city") != "Bengaluru") else 0.0
-        dev_risk = 0.85 if bool(r.get("is_emulator") in (1, "1", True) or r.get("is_rooted") in (1, "1", True)) else 0.0
+        dev_risk = (
+            0.85
+            if bool(r.get("is_emulator") in (1, "1", True) or r.get("is_rooted") in (1, "1", True))
+            else 0.0
+        )
         travel_risk = 0.90 if bool(r.get("impossible_travel") in (1, "1", True)) else 0.0
         sens = 1.0 if "PAYOUT" in str(r.get("threat_tags", "")) else 0.0
 
@@ -239,7 +245,9 @@ def precompute_eval_sessions(
     return records
 
 
-def get_eval_records(csv_path: Optional[Path] = None, force_reload: bool = False) -> List[SessionEvalRecord]:
+def get_eval_records(
+    csv_path: Optional[Path] = None, force_reload: bool = False
+) -> List[SessionEvalRecord]:
     """Retrieves or loads precomputed evaluation records."""
     global _CACHED_EVAL_RECORDS, _CACHED_CSV_PATH
     path = resolve_eval_csv_path(csv_path)
@@ -444,14 +452,15 @@ def evaluate_records_under_thresholds(
     escalate_recall = round(fraud_escalate / fraud_total, 4)
 
     # Ordinary friction (false positives challenged or escalated)
-    ord_fp = (
-        confusion_matrix["ordinary_change"].get("CHALLENGE", 0)
-        + confusion_matrix["ordinary_change"].get("ESCALATE", 0)
-    )
+    ord_fp = confusion_matrix["ordinary_change"].get("CHALLENGE", 0) + confusion_matrix[
+        "ordinary_change"
+    ].get("ESCALATE", 0)
     ordinary_friction = round(ord_fp / ord_total, 4)
 
     # Normal friction
-    norm_fp = confusion_matrix["normal"].get("CHALLENGE", 0) + confusion_matrix["normal"].get("ESCALATE", 0)
+    norm_fp = confusion_matrix["normal"].get("CHALLENGE", 0) + confusion_matrix["normal"].get(
+        "ESCALATE", 0
+    )
     normal_friction = round(norm_fp / normal_total, 4)
 
     # Overall friction & pass rates
@@ -537,11 +546,12 @@ def simulate_policy(
         chal_t = round(max(0.0, 100.0 - float(inv_t)), 1) if inv_t is not None else 74.0
         esc_t = round(max(0.0, 100.0 - float(block_t)), 1) if block_t is not None else 75.0
 
-
     # Check if custom weights or parameters are supplied that require full rescoring
     non_threshold_keys = [
-        k for k in overrides
-        if k not in (
+        k
+        for k in overrides
+        if k
+        not in (
             "allow_threshold",
             "monitor_threshold",
             "challenge_threshold",

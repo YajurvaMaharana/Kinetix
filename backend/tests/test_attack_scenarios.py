@@ -25,6 +25,7 @@ client = TestClient(app)
 # 1. Normal Baseline Scenario (N1)
 # ==============================================================================
 
+
 def test_scenario_n1_normal_baseline():
     """N1: Genuine rider routine delivery session stays strictly in ALLOW tier."""
     res = run_scenario("N1", emit_events=False)
@@ -46,6 +47,7 @@ def test_scenario_n1_normal_baseline():
 # ==============================================================================
 # 2. Benign Life Change Scenarios (O1 - O4)
 # ==============================================================================
+
 
 def test_scenario_o1_new_phone_adaptation():
     """
@@ -137,6 +139,7 @@ def test_scenario_o4_combined_phone_and_zone():
 # 3. Canonical Attack Scenarios (H1, T1, T2, F1, P1)
 # ==============================================================================
 
+
 def test_scenario_h1_account_handoff_mid_shift():
     """
     H1: Mid-shift handoff to unauthenticated driver.
@@ -223,6 +226,7 @@ def test_scenario_p1_payout_hijack():
 # ==============================================================================
 # 4. Catalog and Replay HTTP API Endpoints
 # ==============================================================================
+
 
 def test_api_list_scenarios():
     """GET /api/v1/simulator/scenarios returns catalog of all 10 canonical scenarios."""

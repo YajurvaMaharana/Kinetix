@@ -393,6 +393,3 @@ class ScenarioInfoResponse(BaseModel):
     category: str
     expected_verdict: str
     expected_threat_tags: List[str] = Field(default_factory=list)
-
-
-

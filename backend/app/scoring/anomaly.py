@@ -201,4 +201,3 @@ def score_anomaly_batch(
     except Exception as e:
         logger.warning("Error in score_anomaly_batch: %s. Fallback zeros.", e)
         return np.zeros(n_samples, dtype=float)
-

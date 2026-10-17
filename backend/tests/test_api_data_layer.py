@@ -35,7 +35,14 @@ def setup_test_db():
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=test_engine)
     db = TestingSessionLocal()
-    for rid in ["rider_alice_01", "rider_bob_01", "rider_chlg_01", "rider_esc_01", "rider_priv_01", "rider_audit_01"]:
+    for rid in [
+        "rider_alice_01",
+        "rider_bob_01",
+        "rider_chlg_01",
+        "rider_esc_01",
+        "rider_priv_01",
+        "rider_audit_01",
+    ]:
         r = Rider(
             id=rid,
             display_name=rid,

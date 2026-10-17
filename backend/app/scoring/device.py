@@ -43,6 +43,7 @@ class DeviceRiskScore(float):
     Float subclass allowing device_risk() to be used as a numerical float
     while carrying rich factor records and trust signals.
     """
+
     factors: List[DeviceFactorRecord]
     trusted_device_signal: float
     passport_score: float
@@ -259,18 +260,24 @@ def evaluate_device(
         )
 
     # 4. Trusted Device Signal [0.0, 1.0]
-    trust_level = str(
-        p_dict.get("trust_level") or getattr(passport, "trust_level", "new")
-    ).lower()
+    trust_level = str(p_dict.get("trust_level") or getattr(passport, "trust_level", "new")).lower()
 
     trust_sig = 0.0
-    if not is_new_device and not emulator and not rooted and not mock_location_seen and linked_rider_count <= 1:
+    if (
+        not is_new_device
+        and not emulator
+        and not rooted
+        and not mock_location_seen
+        and linked_rider_count <= 1
+    ):
         if trust_level == "trusted":
             trust_sig = 1.0
         elif trust_level == "provisional":
             trust_sig = 0.5
         else:
-            trust_rating = float(p_dict.get("trust_rating") or getattr(passport, "trust_rating", 1.0))
+            trust_rating = float(
+                p_dict.get("trust_rating") or getattr(passport, "trust_rating", 1.0)
+            )
             if trust_rating >= 1.0:
                 trust_sig = 1.0
             else:

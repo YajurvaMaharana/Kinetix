@@ -123,12 +123,15 @@ def validate_payload_ranges(payload: Dict[str, Any]) -> None:
                 )
         except (ValueError, TypeError):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid liveness_score format"
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Invalid liveness_score format",
             ) from None
 
     # Telemetry
     telem = payload.get("telemetry") if isinstance(payload.get("telemetry"), dict) else payload
-    speed = telem.get("speed_kmh") if telem.get("speed_kmh") is not None else payload.get("speed_kmh")
+    speed = (
+        telem.get("speed_kmh") if telem.get("speed_kmh") is not None else payload.get("speed_kmh")
+    )
     if speed is not None and speed != "":
         try:
             sp_f = float(speed)
@@ -186,15 +189,9 @@ class SessionService:
         shared_devices = 1
         if device_id:
             shared_devices = (
-                db.query(DeviceRider)
-                .filter(DeviceRider.device_id == device_id)
-                .count()
+                db.query(DeviceRider).filter(DeviceRider.device_id == device_id).count()
             )
-        shared_payouts = (
-            db.query(PayoutAccount)
-            .filter(PayoutAccount.rider_id == rider_id)
-            .count()
-        )
+        shared_payouts = db.query(PayoutAccount).filter(PayoutAccount.rider_id == rider_id).count()
         graph_risk = 0.90 if (shared_devices >= 3 or shared_payouts >= 3) else 0.0
         return {
             "shared_device_count": shared_devices,
@@ -275,8 +272,7 @@ class SessionService:
                 .first()
             )
             is_new_device_for_rider = bool(
-                req_dict.get("is_new_device")
-                or (dr_link is not None and not dr_link.is_primary)
+                req_dict.get("is_new_device") or (dr_link is not None and not dr_link.is_primary)
             )
 
             # Persist initial session record
@@ -406,7 +402,9 @@ class SessionService:
         if history_ctx.get("speed_between_pings_kmh", 0.0) > 0:
             if "telemetry" not in merged_req or not isinstance(merged_req["telemetry"], dict):
                 merged_req["telemetry"] = {}
-            merged_req["telemetry"]["speed_between_pings_kmh"] = history_ctx["speed_between_pings_kmh"]
+            merged_req["telemetry"]["speed_between_pings_kmh"] = history_ctx[
+                "speed_between_pings_kmh"
+            ]
         if history_ctx.get("concurrent_session_detected"):
             merged_req["concurrent_session"] = True
 
@@ -478,15 +476,20 @@ class SessionService:
 
         # Process gradual baseline adaptation
         from app.services.baseline_service import baseline_service
+
         session_info = dict(merged_req)
         session_info["session_id"] = session.id
         session_info["device_id"] = device.id
-        session_info["device_token"] = raw_fingerprint if is_new_session else getattr(device, "fingerprint", None)
+        session_info["device_token"] = (
+            raw_fingerprint if is_new_session else getattr(device, "fingerprint", None)
+        )
 
         adaptation_res = baseline_service.process_session_adaptation(
             baseline=baseline,
             session_info=session_info,
-            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0 if scored.components.get("pts_behavior") else 0.15,
+            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0
+            if scored.components.get("pts_behavior")
+            else 0.15,
             rule_matches=[f for f in scored.factors if f.category.lower() == "rule"],
             rule_floor=75.0 if scored.classification == "suspected_handoff" else 0.0,
             graph_risk=scored.components.get("pts_graph_risk", 0.0) / 12.0,
@@ -529,8 +532,16 @@ class SessionService:
             db.add(rf)
 
         # 6. Persist BehaviorSnapshot
-        telem_dict = payload_data.get("telemetry", {}) if isinstance(payload_data.get("telemetry"), dict) else payload_data
-        biom_dict = payload_data.get("biometrics", {}) if isinstance(payload_data.get("biometrics"), dict) else payload_data
+        telem_dict = (
+            payload_data.get("telemetry", {})
+            if isinstance(payload_data.get("telemetry"), dict)
+            else payload_data
+        )
+        biom_dict = (
+            payload_data.get("biometrics", {})
+            if isinstance(payload_data.get("biometrics"), dict)
+            else payload_data
+        )
 
         snapshot = BehaviorSnapshot(
             id=f"snap_{uuid.uuid4().hex[:8]}",
@@ -539,7 +550,9 @@ class SessionService:
             acceleration_variance=float(telem_dict.get("acceleration_variance", 0.0) or 0.0),
             gyro_stability=float(telem_dict.get("gyro_stability", 1.0) or 1.0),
             typing_cadence_cpm=float(
-                biom_dict.get("typing_cadence_cpm", float(biom_dict.get("typing_cps", 3.5) or 3.5) * 60.0)
+                biom_dict.get(
+                    "typing_cadence_cpm", float(biom_dict.get("typing_cps", 3.5) or 3.5) * 60.0
+                )
             ),
             route_deviation_pct=float(telem_dict.get("route_adherence", 1.0) or 1.0),
             created_at=utcnow(),
@@ -570,9 +583,7 @@ class SessionService:
             # Create challenge record
             chlg_id = f"chlg_{uuid.uuid4().hex[:8]}"
             expires = utcnow() + timedelta(minutes=5)
-            chlg_type = (
-                "OTP" if scored.recommended_action == "CHALLENGE_OTP" else "FACE_LIVENESS"
-            )
+            chlg_type = "OTP" if scored.recommended_action == "CHALLENGE_OTP" else "FACE_LIVENESS"
             chlg = Challenge(
                 id=chlg_id,
                 session_id=session.id,
@@ -593,8 +604,13 @@ class SessionService:
                 created_at=chlg.created_at.isoformat(),
             )
             audit_service.log(
-                db, actor, role, "CREATE_CHALLENGE", "challenge", chlg.id, f"Verdict: CHALLENGE ({chlg_type})"
-
+                db,
+                actor,
+                role,
+                "CREATE_CHALLENGE",
+                "challenge",
+                chlg.id,
+                f"Verdict: CHALLENGE ({chlg_type})",
             )
 
         elif scored.verdict == "ESCALATE":
@@ -621,7 +637,9 @@ class SessionService:
             rider.updated_at = utcnow()
 
             # Payout Hold per ESCALATE decision
-            payout_accounts = db.query(PayoutAccount).filter(PayoutAccount.rider_id == rider.id).all()
+            payout_accounts = (
+                db.query(PayoutAccount).filter(PayoutAccount.rider_id == rider.id).all()
+            )
             for pa in payout_accounts:
                 pa.is_flagged = True
 
@@ -634,7 +652,15 @@ class SessionService:
                 pr.status = "HELD"
                 pr.hold_reason = f"Automated payout hold: ESCALATE (score={scored.risk_score})"
 
-            audit_service.log(db, actor, role, "OPEN_CASE", "case", c.id, f"Verdict: ESCALATE (rider={rider.status})")
+            audit_service.log(
+                db,
+                actor,
+                role,
+                "OPEN_CASE",
+                "case",
+                c.id,
+                f"Verdict: ESCALATE (rider={rider.status})",
+            )
 
         elif otp_passed:
             session.status = "IN_PROGRESS"

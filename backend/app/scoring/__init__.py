@@ -85,7 +85,6 @@ __all__ = [
     "TrustHealthResult",
     "TrustProfile",
     "ScoringContext",
-
     "score_session",
     "ScoredAssessment",
     "Assessment",
@@ -136,4 +135,10 @@ __all__ = [
     "SpeedResult",
     "JumpResult",
     "RoutePlausibilityResult",
+    "calculate_trust_health",
+    "evaluate_trust_health",
+    "trust_health_tier",
+    "compute_boundary_shift",
+    "TrustHealthResult",
+    "TrustProfile",
 ]

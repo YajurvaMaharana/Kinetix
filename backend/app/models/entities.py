@@ -87,7 +87,6 @@ class Device(Base):
             return 0
 
 
-
 class DeviceRider(Base):
     __tablename__ = "device_riders"
 
@@ -196,7 +195,9 @@ class RiskAssessment(Base):
     raw_risk: Mapped[float] = mapped_column(Float, nullable=False)
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_tier: Mapped[str] = mapped_column(String(32), nullable=False)
-    classification: Mapped[Optional[str]] = mapped_column(String(64), default="normal", nullable=True)
+    classification: Mapped[Optional[str]] = mapped_column(
+        String(64), default="normal", nullable=True
+    )
     threat_tags_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     model_version: Mapped[str] = mapped_column(

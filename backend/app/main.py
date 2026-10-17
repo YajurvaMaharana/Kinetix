@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
     """
     create_all()
     from app.scoring.anomaly import load_isolation_forest
+
     load_isolation_forest()
     yield
 

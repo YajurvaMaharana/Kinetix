@@ -282,9 +282,7 @@ class DeviceService:
             else:
                 link.last_used_at = utcnow()
 
-        linked_count = (
-            db.query(DeviceRider).filter(DeviceRider.device_id == device.id).count()
-        )
+        linked_count = db.query(DeviceRider).filter(DeviceRider.device_id == device.id).count()
 
         # 6. Trust Level Lifecycle Transitions
         # Transitions: new -> provisional (seen, no risk flags) -> trusted (OTP, selfie, or 3 consistent sessions) -> blocked

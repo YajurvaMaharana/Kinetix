@@ -58,7 +58,6 @@ from app.services.session_service import session_service
 api_router = APIRouter()
 
 
-
 # ==============================================================================
 # 1. Sessions Endpoints
 # ==============================================================================
@@ -376,7 +375,9 @@ async def respond_to_challenge(
             device.trust_rating = 1.0
             link = (
                 db.query(DeviceRider)
-                .filter(DeviceRider.device_id == device.id, DeviceRider.rider_id == session.rider_id)
+                .filter(
+                    DeviceRider.device_id == device.id, DeviceRider.rider_id == session.rider_id
+                )
                 .first()
             )
             if link:
@@ -385,7 +386,10 @@ async def respond_to_challenge(
             # If rider baseline exists and device was provisional/new, mark trusted in baseline state
             from app.models.entities import RiderBaseline
             from app.services.baseline_service import baseline_service
-            baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+
+            baseline = (
+                db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+            )
             if baseline and hasattr(baseline_service, "handle_otp_passed"):
                 baseline_service.handle_otp_passed(baseline, device.fingerprint)
         db.flush()
@@ -428,7 +432,12 @@ async def respond_to_challenge(
 
     event_bus.publish(
         "challenge_resolved",
-        {"challenge_id": chlg.id, "session_id": chlg.session_id, "status": chlg.status, "verdict": new_verdict},
+        {
+            "challenge_id": chlg.id,
+            "session_id": chlg.session_id,
+            "status": chlg.status,
+            "verdict": new_verdict,
+        },
     )
 
     return ChallengeResponse(
@@ -559,9 +568,13 @@ async def get_rider_timeline(rider_id: str, db: Session = Depends(get_db)):
 # ==============================================================================
 @api_router.get("/devices", response_model=List[DeviceResponse], tags=["Devices"])
 async def list_devices(
-    trust_level: Optional[str] = Query(None, description="Filter by trust level: new, provisional, trusted, blocked"),
+    trust_level: Optional[str] = Query(
+        None, description="Filter by trust level: new, provisional, trusted, blocked"
+    ),
     linked_riders_gt1: Optional[bool] = Query(None, alias="linked_riders>1"),
-    linked_riders: Optional[str] = Query(None, description="Filter by linked riders criteria, e.g. '>1'"),
+    linked_riders: Optional[str] = Query(
+        None, description="Filter by linked riders criteria, e.g. '>1'"
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -635,7 +648,7 @@ async def get_device_passport(
         )
 
     # 1. Linked Riders (masked for role=analyst)
-    is_analyst = (role == "analyst")
+    is_analyst = role == "analyst"
     links = db.query(DeviceRider).filter(DeviceRider.device_id == device.id).all()
     associated_count = len(links)
 
@@ -643,11 +656,13 @@ async def get_device_passport(
     for lnk in links:
         rider = db.query(Rider).filter(Rider.id == lnk.rider_id).first()
         disp_name = (
-            mask_name(rider.display_name) if is_analyst else rider.display_name
-        ) if rider else None
+            (mask_name(rider.display_name) if is_analyst else rider.display_name) if rider else None
+        )
         phone = (
-            mask_phone(rider.phone_number) if is_analyst else rider.phone_number
-        ) if rider else None
+            (mask_phone(rider.phone_number) if is_analyst else rider.phone_number)
+            if rider
+            else None
+        )
 
         linked_riders.append(
             LinkedRiderInfo(
@@ -747,7 +762,6 @@ async def get_device_passport(
         recent_sessions=recent_sessions,
         risk_factors=factors_schema,
     )
-
 
 
 # ==============================================================================
@@ -1101,7 +1115,9 @@ async def get_metrics_evaluation():
                     data = json.load(f)
                     if "key_metrics" in data and "attack_recall" not in data["key_metrics"]:
                         f_rec = data["key_metrics"].get("fraud_recall_challenge_plus_pct", 100.0)
-                        data["key_metrics"]["attack_recall"] = f_rec / 100.0 if f_rec > 1.0 else f_rec
+                        data["key_metrics"]["attack_recall"] = (
+                            f_rec / 100.0 if f_rec > 1.0 else f_rec
+                        )
                     return data
             except Exception:
                 pass
@@ -1183,5 +1199,3 @@ async def stream_events(request: Request):
 # 9. Policy Simulator Router
 # ==============================================================================
 api_router.include_router(simulator_router)
-
-

@@ -66,6 +66,7 @@ def get_canonical_baseline(rider_id: str = "rider_scenario_runner_01") -> Dict[s
 # Scenario Builders
 # ==============================================================================
 
+
 def build_scenario_N1(rider_id: str = "rider_n1") -> Dict[str, Any]:
     """
     Scenario N1: Normal rider routine baseline session.
