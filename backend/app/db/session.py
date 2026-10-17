@@ -46,4 +46,13 @@ def drop_all(target_engine=None):
     Drops all tables (used for test setup/teardown and demo resets).
     """
     eng = target_engine or engine
+    import app.models  # noqa: F401
+    from sqlalchemy import text
+    try:
+        with eng.connect() as conn:
+            if eng.dialect.name == "sqlite":
+                conn.execute(text("PRAGMA foreign_keys = OFF;"))
+            conn.commit()
+    except Exception:
+        pass
     Base.metadata.drop_all(bind=eng)

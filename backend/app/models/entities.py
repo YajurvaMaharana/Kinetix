@@ -50,6 +50,7 @@ class FaceTemplate(Base):
     rider_id: Mapped[str] = mapped_column(String(64), ForeignKey("riders.id"), nullable=False, index=True)
     template_version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
     embedding_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    encrypted_embedding: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
@@ -94,6 +95,8 @@ class RiderBaseline(Base):
     home_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     home_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     typical_hours: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    metrics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    profiles_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     rider: Mapped["Rider"] = relationship("Rider", back_populates="baseline")
@@ -110,6 +113,8 @@ class Session(Base):
     ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
     current_risk_score: Mapped[float] = mapped_column(Float, default=10.0, nullable=False)
     current_verdict: Mapped[str] = mapped_column(String(32), default="ALLOW", nullable=False)
+    scenario_run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    ground_truth_label: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
