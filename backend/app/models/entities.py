@@ -162,6 +162,8 @@ class RiskAssessment(Base):
     raw_risk: Mapped[float] = mapped_column(Float, nullable=False)
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_tier: Mapped[str] = mapped_column(String(32), nullable=False)
+    classification: Mapped[Optional[str]] = mapped_column(String(64), default="normal", nullable=True)
+    threat_tags_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     model_version: Mapped[str] = mapped_column(String(64), default="v2.0.0-rf-heuristic", nullable=False)
     policy_version: Mapped[str] = mapped_column(String(64), default="v2.4.0", nullable=False)

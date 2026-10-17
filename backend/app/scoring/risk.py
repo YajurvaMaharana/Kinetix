@@ -211,7 +211,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 
     is_handoff_threat = (
         (face_conf is not None and face_conf != "" and float(face_conf) < 0.40)
-        or any(r.code in ("FACE_MISMATCH", "LIVENESS_FAILED", "CONCURRENT_SESSION") for r in rule_res.matches)
+        or any(r.code in ("FACE_MISMATCH", "LIVENESS_FAILED", "CONCURRENT_SESSION", "CHALLENGE_FAILED") for r in rule_res.matches)
         or behavior_dev >= 0.55
         or (req_dict.get("label") == "suspected_handoff" and (behavior_dev >= 0.40 or sens >= 0.5))
         or ("PAYOUT_REDIRECT" in str(req_dict.get("threat_tags", "")) or "payout_hijack" in str(req_dict.get("ground_truth_label", "")))
@@ -223,16 +223,27 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         and not rule_res.matches
         and rule_res.rule_floor == 0.0
         and sens < 0.3
-        and behavior_dev < 0.35
+        and behavior_dev < 0.40
         and (dev_res.is_new_device or env >= 0.25 or req_dict.get("label") == "ordinary_change")
     )
+    # ESCALATE (75) and rule floors NEVER move
+    health_shift = round(
+        max(-5.0, min(5.0, ((trust_health_val - 70.0) / 30.0) * cfg.trust_health_shift_max)),
+        1,
+    )
+    allow_threshold = cfg.allow_threshold + health_shift
+    monitor_threshold = cfg.monitor_threshold + health_shift
+    challenge_otp_threshold = cfg.challenge_otp_threshold + health_shift
+    escalate_threshold = cfg.escalate_threshold  # Invariant: Never moves
 
+    # 12. Multi-Class Classification & Cap / Floor Overrides
     if is_handoff_threat:
         classification = "suspected_handoff"
         final_risk = max(smoothed_risk, cfg.suspected_handoff_floor)
     elif is_ordinary_change:
         classification = "ordinary_change"
-        final_risk = min(smoothed_risk, cfg.ordinary_change_cap)
+        # Ordinary life changes (new device, new delivery zone) are held in MONITOR tier (capped at 44.0)
+        final_risk = max(allow_threshold + 2.0, min(smoothed_risk, cfg.ordinary_change_cap))
     elif sens >= 0.5:
         classification = "uncertain"
         final_risk = max(smoothed_risk, 45.0)
@@ -249,17 +260,6 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 
     final_risk = round(max(0.0, min(100.0, final_risk)), 1)
     trust_score = round(max(0.0, min(100.0, 100.0 - final_risk)), 1)
-
-    # 12. Decision Bands Personalized by Trust Health (+/- 5 points)
-    # ESCALATE (75) and rule floors NEVER move
-    health_shift = round(
-        max(-5.0, min(5.0, ((trust_health_val - 70.0) / 30.0) * cfg.trust_health_shift_max)),
-        1,
-    )
-    allow_threshold = cfg.allow_threshold + health_shift
-    monitor_threshold = cfg.monitor_threshold + health_shift
-    challenge_otp_threshold = cfg.challenge_otp_threshold + health_shift
-    escalate_threshold = cfg.escalate_threshold  # Invariant: Never moves
 
     if final_risk <= allow_threshold:
         verdict = "ALLOW"
@@ -280,6 +280,12 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
         verdict = "ESCALATE"
         risk_tier = "CRITICAL"
         recommended_action = "ESCALATE_RESTRICT_AND_CASE"
+
+    if bool(req_dict.get("otp_passed")):
+        final_risk = min(final_risk, allow_threshold - 5.0)
+        verdict = "ALLOW"
+        risk_tier = "LOW"
+        recommended_action = "ALLOW"
 
     # 13. Threat Tags Compilation
     threat_tags: List[str] = list(rule_res.threat_tags)

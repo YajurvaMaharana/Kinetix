@@ -33,6 +33,7 @@ class AssessmentSchema(BaseModel):
     trust_score: float = Field(description="100 - risk_score")
     verdict: str  # ALLOW, MONITOR, CHALLENGE, ESCALATE
     risk_tier: str  # LOW, MEDIUM, HIGH, CRITICAL
+    classification: Optional[str] = "normal"
     factors: List[FactorSchema] = Field(default_factory=list)
     threat_tags: List[str] = Field(default_factory=list)
     challenge: Optional[ChallengeSchema] = None
@@ -57,6 +58,8 @@ class DevicePassportInput(BaseModel):
     rooted_or_jailbroken: bool = False
     is_emulator: bool = False
     is_rooted: bool = False
+    is_new_device: bool = False
+    is_new: bool = False
 
     model_config = ConfigDict(extra="ignore")
 
@@ -72,6 +75,7 @@ class SessionCreateRequest(BaseModel):
     location: Optional[Dict[str, Any]] = None
     financial: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
+    is_new_device: bool = False
 
     model_config = ConfigDict(extra="ignore")
 
@@ -218,4 +222,8 @@ class MetricsSummaryResponse(BaseModel):
     total_challenges: int
     open_cases: int
     avg_latency_ms: float
+    p95_latency_ms: float = 0.0
     health_status: str
+    decision_counts: Dict[str, int] = Field(default_factory=dict)
+    classification_counts: Dict[str, int] = Field(default_factory=dict)
+    threat_tag_counts: Dict[str, int] = Field(default_factory=dict)

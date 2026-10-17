@@ -78,9 +78,9 @@ def compute_baseline(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for s in sessions:
         # Check biometrics / telemetry or top-level keys
-        biometrics = s.get("biometrics", {})
-        telemetry = s.get("telemetry", {})
-        loc = s.get("location", {})
+        biometrics = s.get("biometrics") or {}
+        telemetry = s.get("telemetry") or {}
+        loc = s.get("location") or {}
 
         for m in METRIC_NAMES:
             val = None
@@ -112,7 +112,7 @@ def compute_baseline(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
             start_hours.append(float(hour))
 
         # Navigation
-        transitions = s.get("nav_transitions", {})
+        transitions = s.get("nav_transitions") or {}
         for trans, count in transitions.items():
             nav_transitions[trans] = nav_transitions.get(trans, 0) + count
 
