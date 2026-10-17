@@ -60,6 +60,14 @@ from app.scoring.travel import (
     route_plausibility,
     zone_feasibility,
 )
+from app.scoring.trust import (
+    TrustHealthResult,
+    TrustProfile,
+    calculate_trust_health,
+    compute_boundary_shift,
+    evaluate_trust_health,
+    trust_health_tier,
+)
 
 __all__ = [
     "ScoringContext",
@@ -107,4 +115,10 @@ __all__ = [
     "SpeedResult",
     "JumpResult",
     "RoutePlausibilityResult",
+    "calculate_trust_health",
+    "evaluate_trust_health",
+    "trust_health_tier",
+    "compute_boundary_shift",
+    "TrustHealthResult",
+    "TrustProfile",
 ]

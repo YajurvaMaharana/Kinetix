@@ -278,10 +278,9 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 
     # 12. Decision Bands Personalized by Trust Health (+/- 5 points)
     # ESCALATE (75) and rule floors NEVER move
-    health_shift = round(
-        max(-5.0, min(5.0, ((trust_health_val - 70.0) / 30.0) * cfg.trust_health_shift_max)),
-        1,
-    )
+    from app.scoring.trust import compute_boundary_shift
+
+    health_shift = compute_boundary_shift(trust_health_val)
     allow_threshold = cfg.allow_threshold + health_shift
     monitor_threshold = cfg.monitor_threshold + health_shift
     challenge_otp_threshold = cfg.challenge_otp_threshold + health_shift
@@ -481,11 +480,20 @@ def extract_trust_health(ctx: ScoringContext) -> float:
     if ctx.trust_health is not None:
         if isinstance(ctx.trust_health, (int, float)):
             return float(ctx.trust_health)
+        if hasattr(ctx.trust_health, "score"):
+            return float(ctx.trust_health.score)
         if hasattr(ctx.trust_health, "trust_score"):
             return float(ctx.trust_health.trust_score)
-        if isinstance(ctx.trust_health, dict) and "trust_score" in ctx.trust_health:
-            return float(ctx.trust_health["trust_score"])
-    return 85.0
+        if hasattr(ctx.trust_health, "trust_health"):
+            return float(ctx.trust_health.trust_health)
+        if isinstance(ctx.trust_health, dict):
+            for k in ["trust_score", "trust_health", "score"]:
+                if k in ctx.trust_health:
+                    return float(ctx.trust_health[k])
+    from app.scoring.trust import evaluate_trust_health
+
+    eval_res = evaluate_trust_health(ctx)
+    return eval_res.score
 
 
 def extract_previous_risk(ctx: ScoringContext) -> Optional[float]:

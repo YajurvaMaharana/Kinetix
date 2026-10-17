@@ -208,7 +208,7 @@ class SessionService:
             device_id=device.fingerprint
             if (device and device.fingerprint)
             else (device.id if device else None),
-            ip_address=req.ip_address,
+            ip_address=tokenized_ip,
         )
 
         ctx = ScoringContext(
