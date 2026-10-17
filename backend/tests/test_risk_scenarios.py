@@ -117,9 +117,9 @@ def test_scenario_N2_normal_minor_variation(baseline_rider):
         "rider_id": "rider_mumbai_001",
         "city": "mumbai",
         "zone_id": "andheri_east",  # Known zone (25% historical share)
-        "start_hour": 16.5,         # 2 hours from median
+        "start_hour": 16.5,  # 2 hours from median
         "is_new_device": False,
-        "tap_interval_ms": 195.0,   # slight variation
+        "tap_interval_ms": 195.0,  # slight variation
         "typing_cps": 4.5,
         "swipe_velocity_px_s": 1100.0,
         "interaction_timing_cv": 0.31,
@@ -165,9 +165,9 @@ def test_scenario_O1_ordinary_new_phone(baseline_rider):
         "city": "mumbai",
         "zone_id": "bandra_west",
         "start_hour": 14.5,
-        "is_new_device": True,      # New device token
-        "tap_interval_ms": 210.0,   # 13% shift due to larger screen form-factor
-        "typing_cps": 4.2,          # keyboard width adaptation
+        "is_new_device": True,  # New device token
+        "tap_interval_ms": 210.0,  # 13% shift due to larger screen form-factor
+        "typing_cps": 4.2,  # keyboard width adaptation
         "swipe_velocity_px_s": 1280.0,
         "interaction_timing_cv": 0.29,
         "nav_path_similarity": 0.89,  # Screen navigation identical
@@ -193,7 +193,10 @@ def test_scenario_O1_ordinary_new_phone(baseline_rider):
     assert assessment.classification == "ordinary_change"
     assert len(assessment.factors) >= 1
     assert len(assessment.mitigating_factors) >= 1
-    assert any("continuity" in m.name.lower() or "behavior" in m.description.lower() for m in assessment.mitigating_factors)
+    assert any(
+        "continuity" in m.name.lower() or "behavior" in m.description.lower()
+        for m in assessment.mitigating_factors
+    )
     assert "new device" in assessment.rider_safe_text.lower()
 
 
@@ -210,10 +213,10 @@ def test_scenario_O2_ordinary_relocation(baseline_rider):
     event = {
         "session_id": "sess_o2_relocation",
         "rider_id": "rider_mumbai_001",
-        "city": "pune",             # Adjacent metropolitan city
+        "city": "pune",  # Adjacent metropolitan city
         "zone_id": "kothrud",
         "start_hour": 14.0,
-        "is_new_device": False,     # Same primary phone
+        "is_new_device": False,  # Same primary phone
         "tap_interval_ms": 186.0,
         "typing_cps": 4.8,
         "swipe_velocity_px_s": 1160.0,
@@ -252,7 +255,7 @@ def test_scenario_O3_ordinary_new_zone(baseline_rider):
         "session_id": "sess_o3_new_zone",
         "rider_id": "rider_mumbai_001",
         "city": "mumbai",
-        "zone_id": "colaba",        # Adjacent zone
+        "zone_id": "colaba",  # Adjacent zone
         "start_hour": 14.5,
         "is_new_device": False,
         "tap_interval_ms": 185.0,
@@ -294,9 +297,9 @@ def test_scenario_O4_ordinary_new_phone_and_zone(baseline_rider):
         "session_id": "sess_o4_combo_change",
         "rider_id": "rider_mumbai_001",
         "city": "mumbai",
-        "zone_id": "dadar",         # Adjacent zone
+        "zone_id": "dadar",  # Adjacent zone
         "start_hour": 15.0,
-        "is_new_device": True,      # New handset
+        "is_new_device": True,  # New handset
         "tap_interval_ms": 205.0,
         "typing_cps": 4.3,
         "swipe_velocity_px_s": 1240.0,
@@ -342,7 +345,7 @@ def test_scenario_B1_behavior_sensitive_or_payout_challenge(baseline_rider):
         "zone_id": "bandra_west",
         "start_hour": 14.5,
         "is_new_device": False,
-        "tap_interval_ms": 235.0,   # Moderate deviation
+        "tap_interval_ms": 235.0,  # Moderate deviation
         "typing_cps": 3.8,
         "swipe_velocity_px_s": 850.0,
         "interaction_timing_cv": 0.40,
@@ -370,7 +373,12 @@ def test_scenario_B1_behavior_sensitive_or_payout_challenge(baseline_rider):
     assert assessment.verdict == "CHALLENGE"
     assert assessment.recommended_action in ("CHALLENGE_OTP", "CHALLENGE_LIVENESS")
     assert len(assessment.factors) >= 1
-    assert any("sensitive" in f.name.lower() or "financial" in f.name.lower() or "payout" in f.description.lower() for f in assessment.factors)
+    assert any(
+        "sensitive" in f.name.lower()
+        or "financial" in f.name.lower()
+        or "payout" in f.description.lower()
+        for f in assessment.factors
+    )
 
 
 # ==============================================================================
@@ -388,7 +396,7 @@ def test_scenario_T1_impossible_travel(baseline_rider):
     event = {
         "session_id": "sess_t1_impossible_travel",
         "rider_id": "rider_mumbai_001",
-        "city": "delhi",            # Jump to Delhi
+        "city": "delhi",  # Jump to Delhi
         "zone_id": "connaught_place",
         "telemetry": {
             "impossible_travel_detected": True,
@@ -409,7 +417,9 @@ def test_scenario_T1_impossible_travel(baseline_rider):
     assert 60.0 <= assessment.risk_score <= 100.0
     assert assessment.verdict in ("CHALLENGE", "ESCALATE")
     assert "IMPOSSIBLE_TRAVEL" in assessment.threat_tags
-    assert any("travel" in f.name.lower() or "transit" in f.description.lower() for f in assessment.factors)
+    assert any(
+        "travel" in f.name.lower() or "transit" in f.description.lower() for f in assessment.factors
+    )
 
 
 def test_scenario_T2_gps_spoofing(baseline_rider):
@@ -445,7 +455,9 @@ def test_scenario_T2_gps_spoofing(baseline_rider):
     assert 60.0 <= assessment.risk_score <= 100.0
     assert assessment.verdict in ("CHALLENGE", "ESCALATE")
     assert "GPS_SPOOFING" in assessment.threat_tags
-    assert any("gps" in f.name.lower() or "mock" in f.description.lower() for f in assessment.factors)
+    assert any(
+        "gps" in f.name.lower() or "mock" in f.description.lower() for f in assessment.factors
+    )
 
 
 # ==============================================================================
@@ -467,11 +479,11 @@ def test_scenario_H1_handoff_classic(baseline_rider):
         "rider_id": "rider_mumbai_001",
         "city": "mumbai",
         "zone_id": "bandra_west",
-        "start_hour": 22.0,         # Uncharacteristic night shift
+        "start_hour": 22.0,  # Uncharacteristic night shift
         "is_new_device": True,
         # Gross behavioral divergence across metrics
-        "tap_interval_ms": 320.0,   # baseline is 185ms (MAD 12) -> z ~ 10
-        "typing_cps": 1.8,          # baseline is 4.8 cps (MAD 0.4) -> z ~ 6
+        "tap_interval_ms": 320.0,  # baseline is 185ms (MAD 12) -> z ~ 10
+        "typing_cps": 1.8,  # baseline is 4.8 cps (MAD 0.4) -> z ~ 6
         "swipe_velocity_px_s": 500.0,
         "interaction_timing_cv": 0.55,
         "nav_path_similarity": 0.35,
@@ -519,7 +531,7 @@ def test_scenario_H2_handoff_face_mismatch(baseline_rider):
         "zone_id": "bandra_west",
         "biometrics": {
             "face_match_confidence": 0.18,  # Below 0.40 threshold
-            "liveness_score": 0.20,         # Below 0.30 threshold
+            "liveness_score": 0.20,  # Below 0.30 threshold
         },
         "telemetry": {
             "challenge_declined": True,

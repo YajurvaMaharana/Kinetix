@@ -111,13 +111,15 @@ def generate_route_points(
 
         speed_inst = max(5.0, float(rng.normal(speed_kmh, speed_kmh * 0.15)))
 
-        points.append({
-            "step": i,
-            "latitude": round(float(curr_lat), 6),
-            "longitude": round(float(curr_lng), 6),
-            "speed_kmh": round(float(speed_inst), 2),
-            "mock_location": False,
-        })
+        points.append(
+            {
+                "step": i,
+                "latitude": round(float(curr_lat), 6),
+                "longitude": round(float(curr_lng), 6),
+                "speed_kmh": round(float(speed_inst), 2),
+                "mock_location": False,
+            }
+        )
 
     return points
 
@@ -137,9 +139,7 @@ def generate_single_session(
     """Generates a complete session dictionary with all 10 metrics and events."""
     # Select zone
     zone = zone_override or rng.choice(persona.zones)
-    start_lat, start_lng = persona.zone_coords.get(
-        zone, list(persona.zone_coords.values())[0]
-    )
+    start_lat, start_lng = persona.zone_coords.get(zone, list(persona.zone_coords.values())[0])
 
     # Device
     dev = device_override or persona.primary_device
@@ -151,49 +151,43 @@ def generate_single_session(
     tap = sample_bounded(
         params["tap_interval_ms"][0] * biometric_shift_factor,
         params["tap_interval_ms"][1],
-        rng, 100.0, 320.0
+        rng,
+        100.0,
+        320.0,
     )
     # 2. typing_cps
     typing = sample_bounded(
         params["typing_cps"][0] * (1.0 / biometric_shift_factor),
         params["typing_cps"][1],
-        rng, 1.8, 8.0
+        rng,
+        1.8,
+        8.0,
     )
     # 3. swipe_velocity_px_s
     swipe = sample_bounded(
         params["swipe_velocity_px_s"][0] * biometric_shift_factor,
         params["swipe_velocity_px_s"][1],
-        rng, 450.0, 1900.0
+        rng,
+        450.0,
+        1900.0,
     )
     # 4. interaction_timing_cv
     timing_cv = sample_bounded(
-        params["interaction_timing_cv"][0],
-        params["interaction_timing_cv"][1],
-        rng, 0.10, 0.60
+        params["interaction_timing_cv"][0], params["interaction_timing_cv"][1], rng, 0.10, 0.60
     )
     # 5. accept_latency_s
     accept_lat = sample_bounded(
-        params["accept_latency_s"][0],
-        params["accept_latency_s"][1],
-        rng, 1.0, 18.0
+        params["accept_latency_s"][0], params["accept_latency_s"][1], rng, 1.0, 18.0
     )
     # 6. avg_speed_kmh
-    speed = sample_bounded(
-        params["avg_speed_kmh"][0],
-        params["avg_speed_kmh"][1],
-        rng, 10.0, 48.0
-    )
+    speed = sample_bounded(params["avg_speed_kmh"][0], params["avg_speed_kmh"][1], rng, 10.0, 48.0)
     # 7. route_adherence
     adherence = sample_bounded(
-        params["route_adherence"][0],
-        params["route_adherence"][1],
-        rng, 0.60, 0.99
+        params["route_adherence"][0], params["route_adherence"][1], rng, 0.60, 0.99
     )
     # 8. trip_cadence_per_hr
     cadence = sample_bounded(
-        params["trip_cadence_per_hr"][0],
-        params["trip_cadence_per_hr"][1],
-        rng, 0.8, 5.0
+        params["trip_cadence_per_hr"][0], params["trip_cadence_per_hr"][1], rng, 0.8, 5.0
     )
 
     # Shift hour distance
@@ -221,34 +215,44 @@ def generate_single_session(
     events = []
     # 1. Location pings
     for p in route_points:
-        events.append({
-            "event_type": "location_ping",
-            "payload": p,
-            "created_at": (timestamp + timedelta(minutes=p["step"] * 2)).isoformat(),
-        })
+        events.append(
+            {
+                "event_type": "location_ping",
+                "payload": p,
+                "created_at": (timestamp + timedelta(minutes=p["step"] * 2)).isoformat(),
+            }
+        )
     # 2. Trip acceptance and completion
-    events.append({
-        "event_type": "trip_accepted",
-        "payload": {"accept_latency_s": accept_lat, "zone": zone},
-        "created_at": (timestamp + timedelta(seconds=int(accept_lat))).isoformat(),
-    })
-    events.append({
-        "event_type": "trip_picked_up",
-        "payload": {"zone": zone},
-        "created_at": (timestamp + timedelta(minutes=10)).isoformat(),
-    })
-    events.append({
-        "event_type": "trip_completed",
-        "payload": {"distance_km": round(speed * (duration_min / 60.0), 2)},
-        "created_at": (timestamp + timedelta(minutes=duration_min)).isoformat(),
-    })
+    events.append(
+        {
+            "event_type": "trip_accepted",
+            "payload": {"accept_latency_s": accept_lat, "zone": zone},
+            "created_at": (timestamp + timedelta(seconds=int(accept_lat))).isoformat(),
+        }
+    )
+    events.append(
+        {
+            "event_type": "trip_picked_up",
+            "payload": {"zone": zone},
+            "created_at": (timestamp + timedelta(minutes=10)).isoformat(),
+        }
+    )
+    events.append(
+        {
+            "event_type": "trip_completed",
+            "payload": {"distance_km": round(speed * (duration_min / 60.0), 2)},
+            "created_at": (timestamp + timedelta(minutes=duration_min)).isoformat(),
+        }
+    )
     # 3. Nav walk events
     for i, scr in enumerate(nav_walk):
-        events.append({
-            "event_type": "screen_nav",
-            "payload": {"screen": scr, "step": i},
-            "created_at": (timestamp + timedelta(seconds=i * 15)).isoformat(),
-        })
+        events.append(
+            {
+                "event_type": "screen_nav",
+                "payload": {"screen": scr, "step": i},
+                "created_at": (timestamp + timedelta(seconds=i * 15)).isoformat(),
+            }
+        )
 
     # Tokenized IP
     raw_ip = f"103.{rng.randint(10, 250)}.{rng.randint(1, 254)}.{rng.randint(1, 254)}"
@@ -335,10 +339,12 @@ def generate_history(
         for s_idx in range(n_sessions):
             sess_count += 1
             # Sample start hour based on rider shift distribution
-            hr = float(rng.normal(
-                persona.shift_pattern["start_hour_mean"],
-                persona.shift_pattern["start_hour_sd"],
-            ))
+            hr = float(
+                rng.normal(
+                    persona.shift_pattern["start_hour_mean"],
+                    persona.shift_pattern["start_hour_sd"],
+                )
+            )
             hr = float(np.clip(hr, 6.0, 23.0))
             sess_time = day_date.replace(
                 hour=int(hr),
@@ -386,8 +392,12 @@ def make_ordinary_change(
 
     if kind == "new_phone":
         # New device with 5-20% shift on touch biometrics
-        new_model = rng.choice([m for m in DEVICE_MODELS if m != persona.primary_device["model"]] or DEVICE_MODELS)
-        raw_fp = f"fp_new_{new_model.replace(' ', '_')}_{persona.rider_id}_{rng.randint(1000, 9999)}"
+        new_model = rng.choice(
+            [m for m in DEVICE_MODELS if m != persona.primary_device["model"]] or DEVICE_MODELS
+        )
+        raw_fp = (
+            f"fp_new_{new_model.replace(' ', '_')}_{persona.rider_id}_{rng.randint(1000, 9999)}"
+        )
         device = {
             "id": f"dev_{persona.rider_id}_newphone",
             "model": new_model,
@@ -416,8 +426,12 @@ def make_ordinary_change(
         zone = rng.choice(diff_zones if diff_zones else all_city_zones)
 
     elif kind == "new_phone_and_zone":
-        new_model = rng.choice([m for m in DEVICE_MODELS if m != persona.primary_device["model"]] or DEVICE_MODELS)
-        raw_fp = f"fp_combo_{new_model.replace(' ', '_')}_{persona.rider_id}_{rng.randint(1000, 9999)}"
+        new_model = rng.choice(
+            [m for m in DEVICE_MODELS if m != persona.primary_device["model"]] or DEVICE_MODELS
+        )
+        raw_fp = (
+            f"fp_combo_{new_model.replace(' ', '_')}_{persona.rider_id}_{rng.randint(1000, 9999)}"
+        )
         device = {
             "id": f"dev_{persona.rider_id}_combo",
             "model": new_model,

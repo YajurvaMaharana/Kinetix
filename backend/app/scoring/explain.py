@@ -37,7 +37,9 @@ class ExplanationFactor:
     def __post_init__(self):
         cat_lower = self.category.lower()
         if cat_lower not in VALID_CATEGORIES:
-            raise ValueError(f"Invalid category '{self.category}'. Must be one of {VALID_CATEGORIES}")
+            raise ValueError(
+                f"Invalid category '{self.category}'. Must be one of {VALID_CATEGORIES}"
+            )
         self.category = cat_lower
         self.points = round(float(self.points), 2)
 
@@ -75,15 +77,17 @@ def generate_explanation(
     top_metrics = details.get("top_deviated_metrics", [])
     if pts_beh > 0.0:
         metric_str = ", ".join(top_metrics[:2]) if top_metrics else "touch/cadence shift"
-        all_positive.append(ExplanationFactor(
-            code="BEHAVIOR_DEV",
-            category="behavior",
-            points=pts_beh,
-            label="Biometric & Motor Dynamics Deviation",
-            observed=f"behavior_dev={dev_val:.2f} ({metric_str})",
-            baseline="expected normal dev <= 0.35",
-            explanation=f"Motor-sensory interaction rhythms diverged from rider baseline ({metric_str}).",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="BEHAVIOR_DEV",
+                category="behavior",
+                points=pts_beh,
+                label="Biometric & Motor Dynamics Deviation",
+                observed=f"behavior_dev={dev_val:.2f} ({metric_str})",
+                baseline="expected normal dev <= 0.35",
+                explanation=f"Motor-sensory interaction rhythms diverged from rider baseline ({metric_str}).",
+            )
+        )
 
     # 2. Environmental Change Factor (+10 * env + 16 * env * dev)
     pts_env = components.get("pts_env", 0.0) + components.get("pts_env_interaction", 0.0)
@@ -97,30 +101,34 @@ def generate_explanation(
         if details.get("new_zone"):
             env_reasons.append(f"new zone ({details.get('zone_id')})")
         reason_str = ", ".join(env_reasons) if env_reasons else "hardware/network transition"
-        all_positive.append(ExplanationFactor(
-            code="ENV_CHANGE",
-            category="environment",
-            points=pts_env,
-            label="Environment & Hardware Change",
-            observed=f"env_change={env_val:.2f} ({reason_str})",
-            baseline="primary registered handset in home zone",
-            explanation=f"Session initiated from unfamiliar operating environment ({reason_str}).",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="ENV_CHANGE",
+                category="environment",
+                points=pts_env,
+                label="Environment & Hardware Change",
+                observed=f"env_change={env_val:.2f} ({reason_str})",
+                baseline="primary registered handset in home zone",
+                explanation=f"Session initiated from unfamiliar operating environment ({reason_str}).",
+            )
+        )
 
     # 3. Sensitive Account Actions (+18 * sens)
     pts_sens = components.get("pts_sensitive", 0.0)
     sens_val = details.get("sensitive_actions", 0.0)
     if pts_sens > 0.0:
         sens_reasons = details.get("sensitive_action_types", ["account modification"])
-        all_positive.append(ExplanationFactor(
-            code="SENSITIVE_ACTIONS",
-            category="sensitive",
-            points=pts_sens,
-            label="Sensitive Financial/Security Modification",
-            observed=f"sensitive_score={sens_val:.2f} ({', '.join(sens_reasons)})",
-            baseline="stable payout and credentials",
-            explanation=f"High-impact account modification detected ({', '.join(sens_reasons)}).",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="SENSITIVE_ACTIONS",
+                category="sensitive",
+                points=pts_sens,
+                label="Sensitive Financial/Security Modification",
+                observed=f"sensitive_score={sens_val:.2f} ({', '.join(sens_reasons)})",
+                baseline="stable payout and credentials",
+                explanation=f"High-impact account modification detected ({', '.join(sens_reasons)}).",
+            )
+        )
 
     # 4. Deterministic Rule Hits
     for rule in rule_matches:
@@ -136,48 +144,59 @@ def generate_explanation(
         elif "DEVICE" in code or "RING" in code:
             cat = "device"
 
-        all_positive.append(ExplanationFactor(
-            code=code,
-            category=cat,
-            points=pts,
-            label=f"Rule Violation: {code.replace('_', ' ').title()}",
-            observed=obs,
-            baseline=base,
-            explanation=exp,
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code=code,
+                category=cat,
+                points=pts,
+                label=f"Rule Violation: {code.replace('_', ' ').title()}",
+                observed=obs,
+                baseline=base,
+                explanation=exp,
+            )
+        )
 
     # 5. Isolation Forest Anomaly (+12 * anomaly)
     pts_anom = components.get("pts_anomaly", 0.0)
     anom_val = details.get("anomaly_score", 0.0)
     if pts_anom > 0.0:
-        all_positive.append(ExplanationFactor(
-            code="ANOMALY_DETECTION",
-            category="anomaly",
-            points=pts_anom,
-            label="Multivariate Distributional Anomaly",
-            observed=f"percentile_rank={anom_val:.2f}",
-            baseline="cohort distribution rank <= 0.60",
-            explanation="Multi-feature combination exhibits statistical anomaly relative to legitimate population.",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="ANOMALY_DETECTION",
+                category="anomaly",
+                points=pts_anom,
+                label="Multivariate Distributional Anomaly",
+                observed=f"percentile_rank={anom_val:.2f}",
+                baseline="cohort distribution rank <= 0.60",
+                explanation="Multi-feature combination exhibits statistical anomaly relative to legitimate population.",
+            )
+        )
 
     # 6. Device & Travel Stubs (+10 * device_risk, +10 * travel_risk)
     pts_dev = components.get("pts_device_risk", 0.0)
     if pts_dev > 0.0:
-        all_positive.append(ExplanationFactor(
-            code="DEVICE_RISK",
-            category="device",
-            points=pts_dev,
-            label="Hardware Passport Risk",
-            observed=f"device_risk={details.get('device_risk', 0.0):.2f}",
-            baseline="trusted hardware attestation",
-            explanation="Device hardware integrity risk flagged by device passport service.",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="DEVICE_RISK",
+                category="device",
+                points=pts_dev,
+                label="Hardware Passport Risk",
+                observed=f"device_risk={details.get('device_risk', 0.0):.2f}",
+                baseline="trusted hardware attestation",
+                explanation="Device hardware integrity risk flagged by device passport service.",
+            )
+        )
 
     pts_trav = components.get("pts_travel_risk", 0.0)
     if pts_trav > 0.0:
         travel_factors = details.get("travel_factors", [])
-        obs_travel = details.get("travel_observed") or f"travel_risk={details.get('travel_risk', 0.0):.2f}"
-        exp_travel = details.get("travel_explanation") or "Kinematic velocity or trajectory flagged by travel analysis service."
+        obs_travel = (
+            details.get("travel_observed") or f"travel_risk={details.get('travel_risk', 0.0):.2f}"
+        )
+        exp_travel = (
+            details.get("travel_explanation")
+            or "Kinematic velocity or trajectory flagged by travel analysis service."
+        )
         code_travel = details.get("travel_code") or "TRAVEL_RISK"
         label_travel = "Kinematic Travel Anomaly"
 
@@ -188,28 +207,32 @@ def generate_explanation(
             code_travel = getattr(tf, "code", code_travel)
             label_travel = getattr(tf, "label", label_travel)
 
-        all_positive.append(ExplanationFactor(
-            code=code_travel,
-            category="travel",
-            points=pts_trav,
-            label=label_travel,
-            observed=obs_travel,
-            baseline="max plausible 150 km/h",
-            explanation=exp_travel,
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code=code_travel,
+                category="travel",
+                points=pts_trav,
+                label=label_travel,
+                observed=obs_travel,
+                baseline="max plausible 150 km/h",
+                explanation=exp_travel,
+            )
+        )
 
     # 7. Graph Syndicate Risk (+12 * graph_risk)
     pts_graph = components.get("pts_graph_risk", 0.0)
     if pts_graph > 0.0:
-        all_positive.append(ExplanationFactor(
-            code="GRAPH_RISK",
-            category="graph",
-            points=pts_graph,
-            label="Syndicate Cluster Proximity",
-            observed=f"graph_risk={details.get('graph_risk', 0.0):.2f}",
-            baseline="isolated rider entity",
-            explanation="Graph intelligence detected proximity to known collusion clusters or recycled identifiers.",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="GRAPH_RISK",
+                category="graph",
+                points=pts_graph,
+                label="Syndicate Cluster Proximity",
+                observed=f"graph_risk={details.get('graph_risk', 0.0):.2f}",
+                baseline="isolated rider entity",
+                explanation="Graph intelligence detected proximity to known collusion clusters or recycled identifiers.",
+            )
+        )
 
     # 8. MITIGATIONS (Negative Points)
     change_type = details.get("change_type")
@@ -218,90 +241,106 @@ def generate_explanation(
     # Continuity (-12 * continuity)
     pts_cont = components.get("pts_continuity", 0.0)
     if pts_cont < 0.0 or classification == "ordinary_change":
-        all_mitigations.append(ExplanationFactor(
-            code="BEHAVIOR_CONTINUITY",
-            category="behavior",
-            points=min(pts_cont, -8.0) if classification == "ordinary_change" and pts_cont == 0.0 else pts_cont,
-            label="Biometric Behavioral Continuity",
-            observed=f"continuity={details.get('continuity', 0.85):.2f}",
-            baseline="behavior_dev < 0.35",
-            explanation="Rider motor-sensory interaction aligns closely with long-term personal baseline.",
-        ))
+        all_mitigations.append(
+            ExplanationFactor(
+                code="BEHAVIOR_CONTINUITY",
+                category="behavior",
+                points=min(pts_cont, -8.0)
+                if classification == "ordinary_change" and pts_cont == 0.0
+                else pts_cont,
+                label="Biometric Behavioral Continuity",
+                observed=f"continuity={details.get('continuity', 0.85):.2f}",
+                baseline="behavior_dev < 0.35",
+                explanation="Rider motor-sensory interaction aligns closely with long-term personal baseline.",
+            )
+        )
 
     # Known Zone (-5 * known_zone)
     pts_zone = components.get("pts_known_zone", 0.0)
     if pts_zone < 0.0 or change_type == "new_zone":
-        all_mitigations.append(ExplanationFactor(
-            code="KNOWN_ZONE",
-            category="environment",
-            points=pts_zone if pts_zone < 0.0 else -5.0,
-            label="Familiar Delivery Zone",
-            observed=f"zone_share={details.get('known_zone_share', 0.0):.1%}",
-            baseline="frequent operational territory",
-            explanation="Dispatched in rider's established home delivery territory.",
-        ))
+        all_mitigations.append(
+            ExplanationFactor(
+                code="KNOWN_ZONE",
+                category="environment",
+                points=pts_zone if pts_zone < 0.0 else -5.0,
+                label="Familiar Delivery Zone",
+                observed=f"zone_share={details.get('known_zone_share', 0.0):.1%}",
+                baseline="frequent operational territory",
+                explanation="Dispatched in rider's established home delivery territory.",
+            )
+        )
 
     # Trusted Device (-4 * trusted_device)
     pts_tdev = components.get("pts_trusted_device", 0.0)
     if pts_tdev < 0.0:
-        all_mitigations.append(ExplanationFactor(
-            code="MITIGATION_TRUSTED_DEVICE",
-            category="device",
-            points=pts_tdev,
-            label="Verified Hardware Passport",
-            observed="hardware_attestation=PASS",
-            baseline="primary trusted device",
-            explanation="Cryptographically signed hardware passport matches enrolled device.",
-        ))
+        all_mitigations.append(
+            ExplanationFactor(
+                code="MITIGATION_TRUSTED_DEVICE",
+                category="device",
+                points=pts_tdev,
+                label="Verified Hardware Passport",
+                observed="hardware_attestation=PASS",
+                baseline="primary trusted device",
+                explanation="Cryptographically signed hardware passport matches enrolled device.",
+            )
+        )
 
     # New Device Consistent Usage (provisional device streak)
     if change_type in ("new_phone", "combined") and classification == "ordinary_change":
-        all_mitigations.append(ExplanationFactor(
-            code="NEW_DEVICE_CONSISTENT",
-            category="device",
-            points=-4.0,
-            label="New Device Consistent Usage",
-            observed=f"progress={adaptation_progress or 'consistent'}",
-            baseline="provisional handset",
-            explanation=f"Provisional handset demonstrates consistent biometric rhythm ({adaptation_progress or 'consistent'}).",
-        ))
+        all_mitigations.append(
+            ExplanationFactor(
+                code="NEW_DEVICE_CONSISTENT",
+                category="device",
+                points=-4.0,
+                label="New Device Consistent Usage",
+                observed=f"progress={adaptation_progress or 'consistent'}",
+                baseline="provisional handset",
+                explanation=f"Provisional handset demonstrates consistent biometric rhythm ({adaptation_progress or 'consistent'}).",
+            )
+        )
 
     # Relocation Pattern Adaptation (relocation streak)
     if change_type in ("relocation", "combined") and classification == "ordinary_change":
-        all_mitigations.append(ExplanationFactor(
-            code="RELOCATION_CONSISTENT",
-            category="environment",
-            points=-5.0,
-            label="Relocation Pattern Adaptation",
-            observed=f"progress={adaptation_progress or 'consistent'}",
-            baseline="relocation adaptation",
-            explanation=f"Rider maintains consistent personal baseline across new territory ({adaptation_progress or 'consistent'}).",
-        ))
+        all_mitigations.append(
+            ExplanationFactor(
+                code="RELOCATION_CONSISTENT",
+                category="environment",
+                points=-5.0,
+                label="Relocation Pattern Adaptation",
+                observed=f"progress={adaptation_progress or 'consistent'}",
+                baseline="relocation adaptation",
+                explanation=f"Rider maintains consistent personal baseline across new territory ({adaptation_progress or 'consistent'}).",
+            )
+        )
 
     # Trust Health Bonus (-4 * trust_health_bonus)
     pts_health = components.get("pts_trust_health", 0.0)
     if pts_health < 0.0:
-        all_mitigations.append(ExplanationFactor(
-            code="MITIGATION_HEALTH",
-            category="trust",
-            points=pts_health,
-            label="Rider Trust Health Bonus",
-            observed=f"trust_health={details.get('trust_health', 70.0):.1f}",
-            baseline="health score > 70.0",
-            explanation="Exemplary historical delivery track record and zero security strikes.",
-        ))
+        all_mitigations.append(
+            ExplanationFactor(
+                code="MITIGATION_HEALTH",
+                category="trust",
+                points=pts_health,
+                label="Rider Trust Health Bonus",
+                observed=f"trust_health={details.get('trust_health', 70.0):.1f}",
+                baseline="health score > 70.0",
+                explanation="Exemplary historical delivery track record and zero security strikes.",
+            )
+        )
 
     # Guarantee at least one factor on every output
     if not all_positive:
-        all_positive.append(ExplanationFactor(
-            code="ROUTINE_BASELINE",
-            category="behavior",
-            points=0.0,
-            label="Routine Baseline Telemetry",
-            observed="behavior_dev <= 0.15",
-            baseline="normal established baseline",
-            explanation="Session telemetry and biometric interactions match historical genuine behavior.",
-        ))
+        all_positive.append(
+            ExplanationFactor(
+                code="ROUTINE_BASELINE",
+                category="behavior",
+                points=0.0,
+                label="Routine Baseline Telemetry",
+                observed="behavior_dev <= 0.15",
+                baseline="normal established baseline",
+                explanation="Session telemetry and biometric interactions match historical genuine behavior.",
+            )
+        )
 
     # Calculate points sum
     sum_pts = round(sum(f.points for f in all_positive) + sum(m.points for m in all_mitigations), 2)
@@ -314,7 +353,11 @@ def generate_explanation(
     top_drivers = [f.label for f in top_factors if f.points > 0][:3]
     top_mitigs = [f.label for f in top_factors if f.points < 0][:2]
 
-    driver_text = f"Primary risk drivers: {', '.join(top_drivers)}." if top_drivers else "No elevated risk drivers."
+    driver_text = (
+        f"Primary risk drivers: {', '.join(top_drivers)}."
+        if top_drivers
+        else "No elevated risk drivers."
+    )
     mitig_text = f" Mitigating factors: {', '.join(top_mitigs)}." if top_mitigs else ""
     summary = f"Classified as '{classification.upper()}'. {driver_text}{mitig_text}"
 

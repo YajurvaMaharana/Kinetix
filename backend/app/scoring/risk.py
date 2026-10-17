@@ -41,6 +41,7 @@ class ScoringContext:
     Bundles all contextual signals required for multi-modal session risk evaluation.
     Passed to score_session().
     """
+
     request_or_event: Any
     baseline: Optional[Any] = None
     device_passport: Optional[Any] = None
@@ -60,15 +61,18 @@ class ScoredAssessment:
     """
     Rich structured evaluation result conforming to TrustJuggler v2 contracts.
     """
+
     risk_score: float
     raw_risk: float
     trust_score: float
-    verdict: str                        # ALLOW, MONITOR, CHALLENGE, ESCALATE
-    risk_tier: str                      # LOW, MEDIUM, HIGH, CRITICAL
-    classification: str                 # normal, ordinary_change, suspected_handoff, uncertain
-    recommended_action: str             # ALLOW, MONITOR, CHALLENGE_OTP, CHALLENGE_LIVENESS, ESCALATE_RESTRICT_AND_CASE
+    verdict: str  # ALLOW, MONITOR, CHALLENGE, ESCALATE
+    risk_tier: str  # LOW, MEDIUM, HIGH, CRITICAL
+    classification: str  # normal, ordinary_change, suspected_handoff, uncertain
+    recommended_action: (
+        str  # ALLOW, MONITOR, CHALLENGE_OTP, CHALLENGE_LIVENESS, ESCALATE_RESTRICT_AND_CASE
+    )
     threat_tags: List[str]
-    confidence: float                   # 0.0 to 1.0
+    confidence: float  # 0.0 to 1.0
     factors: List[FactorSchema]
     mitigating_factors: List[FactorSchema]
     summary: str
@@ -81,8 +85,9 @@ class ScoredAssessment:
     adaptation_progress: Optional[str] = None
 
 
-# Alias for backward compatibility
+# Aliases for backward compatibility
 Assessment = ScoredAssessment
+ScoreResult = ScoredAssessment
 
 
 def score_session(ctx: ScoringContext) -> ScoredAssessment:
@@ -110,6 +115,7 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     # 4. Device and Travel Inputs
     device_risk = extract_device_risk(ctx)
     from app.scoring.travel import evaluate_travel
+
     travel_eval = evaluate_travel(ctx, cfg)
     travel_risk = max(float(getattr(ctx, "travel_risk", 0.0) or 0.0), travel_eval.travel_risk)
     graph_risk = extract_graph_risk(ctx)
@@ -154,7 +160,9 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     else:
         continuity = behavior_continuity(behavior_dev, cfg.behavior_continuity_threshold)
         known_zone = known_zone_share(zone_id, ctx.baseline)
-        trusted_dev = trusted_device_signal(ctx.device_passport, dev_res.is_new_device, baseline=ctx.baseline)
+        trusted_dev = trusted_device_signal(
+            ctx.device_passport, dev_res.is_new_device, baseline=ctx.baseline
+        )
         health_bonus = trust_health_bonus(trust_health_val)
 
     # 8. Compute Point Components
@@ -217,11 +225,20 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
 
     is_handoff_threat = (
         (face_conf is not None and face_conf != "" and float(face_conf) < 0.40)
-        or any(r.code in ("FACE_MISMATCH", "LIVENESS_FAILED", "CONCURRENT_SESSION") for r in rule_res.matches)
+        or any(
+            r.code in ("FACE_MISMATCH", "LIVENESS_FAILED", "CONCURRENT_SESSION")
+            for r in rule_res.matches
+        )
         or behavior_dev >= 0.55
         or (req_dict.get("label") == "suspected_handoff" and (behavior_dev >= 0.40 or sens >= 0.5))
-        or ("PAYOUT_REDIRECT" in str(req_dict.get("threat_tags", "")) or "payout_hijack" in str(req_dict.get("ground_truth_label", "")))
-        or ("FRAUD_RING" in str(req_dict.get("threat_tags", "")) or "fraud_ring" in str(req_dict.get("ground_truth_label", "")))
+        or (
+            "PAYOUT_REDIRECT" in str(req_dict.get("threat_tags", ""))
+            or "payout_hijack" in str(req_dict.get("ground_truth_label", ""))
+        )
+        or (
+            "FRAUD_RING" in str(req_dict.get("threat_tags", ""))
+            or "fraud_ring" in str(req_dict.get("ground_truth_label", ""))
+        )
     )
 
     is_ordinary_change = (
@@ -313,13 +330,12 @@ def score_session(ctx: ScoringContext) -> ScoredAssessment:
     confidence = round(float(max(0.40, min(0.99, base_conf))), 2)
 
     # 15. Explainability Factor Attribution
-    sorted_metric_devs = sorted(
-        dev_res.metric_deviations.items(), key=lambda x: x[1], reverse=True
-    )
+    sorted_metric_devs = sorted(dev_res.metric_deviations.items(), key=lambda x: x[1], reverse=True)
     top_metrics = [k for k, v in sorted_metric_devs if v > 0.25]
 
     # Detect benign change type & adaptation progress
     from app.services.baseline_service import baseline_service
+
     detected_change_type, detected_progress = baseline_service.detect_change_type(ctx, cfg)
 
     context_details = {
@@ -418,9 +434,15 @@ def extract_device_risk(ctx: ScoringContext) -> float:
     if hasattr(ctx, "device_risk") and ctx.device_risk is not None and ctx.device_risk > 0.0:
         return float(ctx.device_risk)
     req = _extract_dict(ctx.request_or_event)
-    dev = _extract_dict(req.get("device_passport") or req.get("device") or getattr(ctx, "device_passport", {}))
-    is_emu = bool(dev.get("is_emulator") or req.get("is_emulator") or req.get("is_emulator") in (1, "1", True))
-    is_root = bool(dev.get("is_rooted") or req.get("is_rooted") or req.get("is_rooted") in (1, "1", True))
+    dev = _extract_dict(
+        req.get("device_passport") or req.get("device") or getattr(ctx, "device_passport", {})
+    )
+    is_emu = bool(
+        dev.get("is_emulator") or req.get("is_emulator") or req.get("is_emulator") in (1, "1", True)
+    )
+    is_root = bool(
+        dev.get("is_rooted") or req.get("is_rooted") or req.get("is_rooted") in (1, "1", True)
+    )
     if is_emu or is_root:
         return 0.85
     return 0.0
@@ -433,6 +455,7 @@ def extract_travel_risk(ctx: ScoringContext) -> float:
     if hasattr(ctx, "travel_risk") and ctx.travel_risk is not None and ctx.travel_risk > 0.0:
         return float(ctx.travel_risk)
     from app.scoring.travel import evaluate_travel
+
     travel_eval = evaluate_travel(ctx)
     return travel_eval.travel_risk
 

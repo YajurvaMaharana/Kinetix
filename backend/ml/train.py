@@ -52,7 +52,14 @@ def extract_features_from_csv_row(row: Dict[str, Any]) -> List[float]:
         d_vals.append(d)
 
     # Environmental indicators
-    is_new_dev = 1.0 if ("new_phone" in row.get("session_id", "") or "ORDINARY_CHANGE" in row.get("threat_tags", "")) else 0.0
+    is_new_dev = (
+        1.0
+        if (
+            "new_phone" in row.get("session_id", "")
+            or "ORDINARY_CHANGE" in row.get("threat_tags", "")
+        )
+        else 0.0
+    )
     is_new_city = 1.0 if "relocation" in row.get("session_id", "") else 0.0
     env_change = 0.35 * is_new_dev + 0.30 * is_new_city
 
@@ -91,7 +98,9 @@ def train_isolation_forest() -> Path:
         raise ValueError(f"No valid NORMAL or ORDINARY_CHANGE rows found in {train_csv}")
 
     X_train = np.array(X_list, dtype=np.float32)
-    logger.info(f"[+] Loaded {len(X_train)} genuine training vectors across {X_train.shape[1]} features.")
+    logger.info(
+        f"[+] Loaded {len(X_train)} genuine training vectors across {X_train.shape[1]} features."
+    )
 
     # Isolation Forest: n_estimators=150, random_state=42
     logger.info("[*] Fitting IsolationForest(n_estimators=150, random_state=42)...")

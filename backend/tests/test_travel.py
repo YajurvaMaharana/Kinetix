@@ -84,26 +84,42 @@ def test_implied_speed_and_150_kmh_boundary():
     # 1. Normal vehicle speed: 10 km in 6 minutes (0.1h) = 100 km/h
     p1 = {"latitude": 19.0000, "longitude": 72.8000, "timestamp": now.isoformat()}
     # 10 km north is approx 0.09009 degrees lat
-    p2 = {"latitude": 19.09009, "longitude": 72.8000, "timestamp": (now + timedelta(minutes=6)).isoformat()}
+    p2 = {
+        "latitude": 19.09009,
+        "longitude": 72.8000,
+        "timestamp": (now + timedelta(minutes=6)).isoformat(),
+    }
     res_100 = implied_speed(p1, p2, max_feasible_speed_kmh=150.0)
     assert not res_100.is_infeasible
     assert pytest.approx(res_100.speed_kmh, abs=2.0) == 100.0
 
     # 2. Exactly at 150 km/h boundary: 9.996 km in 4 minutes (0.0667h) = 149.95 km/h <= 150 km/h
-    p3 = {"latitude": 19.0899, "longitude": 72.8000, "timestamp": (now + timedelta(minutes=4)).isoformat()}
+    p3 = {
+        "latitude": 19.0899,
+        "longitude": 72.8000,
+        "timestamp": (now + timedelta(minutes=4)).isoformat(),
+    }
     res_150 = implied_speed(p1, p3, max_feasible_speed_kmh=150.0)
     assert not res_150.is_infeasible
     assert pytest.approx(res_150.speed_kmh, abs=2.0) == 150.0
 
     # 3. Beyond 150 km/h threshold: 10 km in 3 minutes (0.05h) = 200 km/h -> Infeasible
-    p4 = {"latitude": 19.09009, "longitude": 72.8000, "timestamp": (now + timedelta(minutes=3)).isoformat()}
+    p4 = {
+        "latitude": 19.09009,
+        "longitude": 72.8000,
+        "timestamp": (now + timedelta(minutes=3)).isoformat(),
+    }
     res_200 = implied_speed(p1, p4, max_feasible_speed_kmh=150.0)
     assert res_200.is_infeasible
     assert res_200.speed_kmh > 150.0
     assert "implied speed" in res_200.explanation
 
     # 4. Noise floor filtering (< 5.0 seconds interval)
-    p_jitter = {"latitude": 19.0001, "longitude": 72.8001, "timestamp": (now + timedelta(seconds=2)).isoformat()}
+    p_jitter = {
+        "latitude": 19.0001,
+        "longitude": 72.8001,
+        "timestamp": (now + timedelta(seconds=2)).isoformat(),
+    }
     res_jitter = implied_speed(p1, p_jitter, min_interval_s=5.0)
     assert not res_jitter.is_infeasible
     assert res_jitter.speed_kmh == 0.0
@@ -125,15 +141,23 @@ def test_synthetic_spoof_route_detected():
     spoofed_pings = []
     # 10 perfectly collinear points along 45 degree line at identical speed
     for step in range(10):
-        spoofed_pings.append({
-            "step": step,
-            "latitude": round(start_lat + (step * 0.003), 6),
-            "longitude": round(start_lng + (step * 0.003), 6),
-            "speed_kmh": fixed_speed,
-            "timestamp": (now + timedelta(minutes=step * 2)).isoformat(),
-        })
+        spoofed_pings.append(
+            {
+                "step": step,
+                "latitude": round(start_lat + (step * 0.003), 6),
+                "longitude": round(start_lng + (step * 0.003), 6),
+                "speed_kmh": fixed_speed,
+                "timestamp": (now + timedelta(minutes=step * 2)).isoformat(),
+            }
+        )
 
-    res = route_plausibility(spoofed_pings, min_pings=8, spoof_straightness=0.98, spoof_speed_cv=0.05, spoof_jitter_floor=1.5)
+    res = route_plausibility(
+        spoofed_pings,
+        min_pings=8,
+        spoof_straightness=0.98,
+        spoof_speed_cv=0.05,
+        spoof_jitter_floor=1.5,
+    )
 
     assert res.pings_count == 10
     assert res.straightness_ratio >= 0.99
@@ -171,7 +195,13 @@ def test_real_simulated_routes_not_flagged():
 
     assert len(real_pings) >= 8
 
-    res = route_plausibility(real_pings, min_pings=8, spoof_straightness=0.98, spoof_speed_cv=0.05, spoof_jitter_floor=1.5)
+    res = route_plausibility(
+        real_pings,
+        min_pings=8,
+        spoof_straightness=0.98,
+        spoof_speed_cv=0.05,
+        spoof_jitter_floor=1.5,
+    )
 
     assert not res.is_spoofed, "Real urban route should not be flagged as spoofed"
     assert res.speed_cv > 0.08, "Real traffic has significant speed variance"
@@ -216,7 +246,9 @@ def test_mock_location_flag_fires_gps_spoofing():
     assert assessment.risk_score >= 60.0
     assert assessment.verdict in ("CHALLENGE", "ESCALATE")
     assert "GPS_SPOOFING" in assessment.threat_tags
-    assert any("gps" in f.name.lower() or "mock" in f.description.lower() for f in assessment.factors)
+    assert any(
+        "gps" in f.name.lower() or "mock" in f.description.lower() for f in assessment.factors
+    )
 
 
 # ==============================================================================
@@ -231,7 +263,12 @@ def test_impossible_travel_scenario():
     now = datetime(2026, 11, 20, 10, 0, 0, tzinfo=timezone.utc)
 
     # Mumbai to Delhi: 1,150 km in 6 minutes (~11,500 km/h)
-    prev_loc = {"city": "mumbai", "latitude": 19.0760, "longitude": 72.8777, "timestamp": now.isoformat()}
+    prev_loc = {
+        "city": "mumbai",
+        "latitude": 19.0760,
+        "longitude": 72.8777,
+        "timestamp": now.isoformat(),
+    }
     curr_ping = {
         "city": "delhi",
         "latitude": 28.6139,
@@ -263,7 +300,9 @@ def test_impossible_travel_scenario():
     assert assessment.risk_score >= 60.0
     assert assessment.verdict in ("CHALLENGE", "ESCALATE")
     assert "IMPOSSIBLE_TRAVEL" in assessment.threat_tags
-    assert any("travel" in f.name.lower() or "transit" in f.description.lower() for f in assessment.factors)
+    assert any(
+        "travel" in f.name.lower() or "transit" in f.description.lower() for f in assessment.factors
+    )
 
 
 # ==============================================================================
@@ -276,7 +315,11 @@ def test_within_session_gps_jump():
     now = datetime(2026, 11, 20, 16, 0, 0, tzinfo=timezone.utc)
     p1 = {"latitude": 19.0596, "longitude": 72.8295, "timestamp": now.isoformat()}
     # 3.5 km jump in 8 seconds
-    p2 = {"latitude": 19.0900, "longitude": 72.8350, "timestamp": (now + timedelta(seconds=8)).isoformat()}
+    p2 = {
+        "latitude": 19.0900,
+        "longitude": 72.8350,
+        "timestamp": (now + timedelta(seconds=8)).isoformat(),
+    }
 
     jump_res = gps_jump(p1, p2, jump_dist_threshold_km=1.0)
     assert jump_res.jump_detected
@@ -284,7 +327,11 @@ def test_within_session_gps_jump():
     assert "Teleportation jump" in jump_res.explanation
 
     # Small 50 meter shift in 10 seconds -> Not a jump
-    p_close = {"latitude": 19.0598, "longitude": 72.8296, "timestamp": (now + timedelta(seconds=10)).isoformat()}
+    p_close = {
+        "latitude": 19.0598,
+        "longitude": 72.8296,
+        "timestamp": (now + timedelta(seconds=10)).isoformat(),
+    }
     normal_res = gps_jump(p1, p_close, jump_dist_threshold_km=1.0)
     assert not normal_res.jump_detected
 

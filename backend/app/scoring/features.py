@@ -215,7 +215,9 @@ def behavior_deviation(
     else:
         adapt_state = {}
 
-    dev_token = req_dict.get("device_token") or dev_info.get("fingerprint") or req_dict.get("device_id")
+    dev_token = (
+        req_dict.get("device_token") or dev_info.get("fingerprint") or req_dict.get("device_id")
+    )
     dev_adapt = adapt_state.get("new_device", {})
     is_trusted_via_adaptation = bool(
         dev_adapt.get("trusted")
@@ -224,13 +226,21 @@ def behavior_deviation(
 
     # Check whether device is new
     is_new_device = bool(
-        (req_dict.get("is_new_device")
-        or dev_info.get("is_new_device")
-        or dev_info.get("is_new")
-        or ("ORDINARY_CHANGE" in str(req_dict.get("threat_tags", "")) and "new_phone" in str(req_dict.get("session_id", "")))
-        or ("newphone" in str(req_dict.get("device_id", "")).lower())
-        or ("combo" in str(req_dict.get("device_id", "")).lower())
-        or (isinstance(getattr(ctx, "device_passport", None), dict) and getattr(ctx, "device_passport", {}).get("is_new")))
+        (
+            req_dict.get("is_new_device")
+            or dev_info.get("is_new_device")
+            or dev_info.get("is_new")
+            or (
+                "ORDINARY_CHANGE" in str(req_dict.get("threat_tags", ""))
+                and "new_phone" in str(req_dict.get("session_id", ""))
+            )
+            or ("newphone" in str(req_dict.get("device_id", "")).lower())
+            or ("combo" in str(req_dict.get("device_id", "")).lower())
+            or (
+                isinstance(getattr(ctx, "device_passport", None), dict)
+                and getattr(ctx, "device_passport", {}).get("is_new")
+            )
+        )
         and not (dev_info.get("is_trusted") or is_trusted_via_adaptation)
     )
 
@@ -272,7 +282,11 @@ def behavior_deviation(
             circ_dist = circular_hour_distance(curr_hour, typical_hour)
             obs = circ_dist
             # For shift_hour_dist, baseline median is rider's typical shift distance (default ~ 0.8)
-            med = float(base_metrics.get("shift_hour_dist", {}).get("median", 0.8)) if not is_cold_start else 1.0
+            med = (
+                float(base_metrics.get("shift_hour_dist", {}).get("median", 0.8))
+                if not is_cold_start
+                else 1.0
+            )
 
         elif m == "nav_path_similarity":
             # If rider navigated, compare similarity. A drop in similarity increases deviation
@@ -285,7 +299,12 @@ def behavior_deviation(
 
         # Robust z calculation (prefer pre-computed z-score from personal baseline if available)
         z_col = f"z_{m}"
-        if baseline is None and z_col in req_dict and req_dict[z_col] is not None and req_dict[z_col] != "":
+        if (
+            baseline is None
+            and z_col in req_dict
+            and req_dict[z_col] is not None
+            and req_dict[z_col] != ""
+        ):
             try:
                 z = abs(float(req_dict[z_col]))
             except (ValueError, TypeError):
@@ -348,7 +367,11 @@ def environment_change(
     """
     cfg = thresholds or DEFAULT_THRESHOLDS
     req_dict = _extract_dict(getattr(ctx, "request_or_event", ctx))
-    dev_dict = _extract_dict(req_dict.get("device_passport") or req_dict.get("device") or getattr(ctx, "device_passport", {}))
+    dev_dict = _extract_dict(
+        req_dict.get("device_passport")
+        or req_dict.get("device")
+        or getattr(ctx, "device_passport", {})
+    )
     base_dict = _extract_dict(getattr(ctx, "baseline", None))
 
     # Check adaptation state
@@ -363,7 +386,9 @@ def environment_change(
     else:
         adapt_state = {}
 
-    dev_token = req_dict.get("device_token") or dev_dict.get("fingerprint") or req_dict.get("device_id")
+    dev_token = (
+        req_dict.get("device_token") or dev_dict.get("fingerprint") or req_dict.get("device_id")
+    )
     dev_adapt = adapt_state.get("new_device", {})
     is_trusted_via_adaptation = bool(
         dev_adapt.get("trusted")
@@ -374,12 +399,14 @@ def environment_change(
 
     # 1. New Device (0.35)
     is_new_dev = bool(
-        (req_dict.get("is_new_device")
-        or dev_dict.get("is_new_device")
-        or dev_dict.get("is_new")
-        or ("new_phone" in str(req_dict.get("session_id", "")))
-        or ("newphone" in str(req_dict.get("device_id", "")).lower())
-        or ("combo" in str(req_dict.get("device_id", "")).lower()))
+        (
+            req_dict.get("is_new_device")
+            or dev_dict.get("is_new_device")
+            or dev_dict.get("is_new")
+            or ("new_phone" in str(req_dict.get("session_id", "")))
+            or ("newphone" in str(req_dict.get("device_id", "")).lower())
+            or ("combo" in str(req_dict.get("device_id", "")).lower())
+        )
         and not (dev_dict.get("is_trusted") or is_trusted_via_adaptation)
     )
     if is_new_dev:
@@ -396,7 +423,9 @@ def environment_change(
 
     if is_adapted_city or (curr_city and home_city and curr_city == home_city):
         pass
-    elif "relocation" in str(req_dict.get("session_id", "")) and not adapt_state.get("new_city", {}).get("adapted"):
+    elif "relocation" in str(req_dict.get("session_id", "")) and not adapt_state.get(
+        "new_city", {}
+    ).get("adapted"):
         total_env += cfg.w_env_new_city
     elif curr_city and home_city and curr_city != home_city:
         if (curr_city, home_city) in ADJACENT_CITIES:
@@ -414,11 +443,17 @@ def environment_change(
             zone_profile = {}
 
     known_zones = {str(z).strip().lower() for z in zone_profile.keys()}
-    is_adapted_zone = bool(adapt_state.get("new_zone", {}).get("adapted") and adapt_state.get("new_zone", {}).get("zone") == curr_zone)
+    is_adapted_zone = bool(
+        adapt_state.get("new_zone", {}).get("adapted")
+        and adapt_state.get("new_zone", {}).get("zone") == curr_zone
+    )
 
     if is_adapted_zone:
         pass
-    elif ("new_zone" in str(req_dict.get("session_id", "")) or "combo" in str(req_dict.get("device_id", "")).lower()) and not is_adapted_zone:
+    elif (
+        "new_zone" in str(req_dict.get("session_id", ""))
+        or "combo" in str(req_dict.get("device_id", "")).lower()
+    ) and not is_adapted_zone:
         total_env += cfg.w_env_new_zone
     elif curr_zone and known_zones and curr_zone not in known_zones:
         # Check if adjacent to any known zone
@@ -474,11 +509,15 @@ def sensitive_actions(
     total_sens = 0.0
 
     # Ground truth payout hijack from evaluation dataset
-    if "payout_hijack" in str(req_dict.get("ground_truth_label", "")) or "PAYOUT_REDIRECT" in str(req_dict.get("threat_tags", "")):
-        total_sens += (cfg.w_sens_payout + cfg.w_sens_withdrawal_pref)
+    if "payout_hijack" in str(req_dict.get("ground_truth_label", "")) or "PAYOUT_REDIRECT" in str(
+        req_dict.get("threat_tags", "")
+    ):
+        total_sens += cfg.w_sens_payout + cfg.w_sens_withdrawal_pref
 
     # Payout account change (0.5)
-    if fin.get("payout_account_changed") or any(e.get("event_type") == "payout_account_updated" for e in events):
+    if fin.get("payout_account_changed") or any(
+        e.get("event_type") == "payout_account_updated" for e in events
+    ):
         total_sens += cfg.w_sens_payout
 
     # Phone update (0.3)
@@ -486,11 +525,15 @@ def sensitive_actions(
         total_sens += cfg.w_sens_phone
 
     # Password / Credential update (0.2)
-    if req_dict.get("password_updated") or any(e.get("event_type") == "password_updated" for e in events):
+    if req_dict.get("password_updated") or any(
+        e.get("event_type") == "password_updated" for e in events
+    ):
         total_sens += cfg.w_sens_password
 
     # Withdrawal preference or immediate cashout (0.2)
-    if fin.get("withdrawal_requested") or any(e.get("event_type") == "withdrawal_requested" for e in events):
+    if fin.get("withdrawal_requested") or any(
+        e.get("event_type") == "withdrawal_requested" for e in events
+    ):
         total_sens += cfg.w_sens_withdrawal_pref
 
     # Check for velocity boost (within 24h of new device or new city)
@@ -560,7 +603,9 @@ def trusted_device_signal(
 
     if baseline is not None:
         base_dict = _extract_dict(baseline)
-        adapt_raw = base_dict.get("adaptation_state_json") or base_dict.get("adaptation_state") or {}
+        adapt_raw = (
+            base_dict.get("adaptation_state_json") or base_dict.get("adaptation_state") or {}
+        )
         if isinstance(adapt_raw, str):
             try:
                 adapt_st = json.loads(adapt_raw)

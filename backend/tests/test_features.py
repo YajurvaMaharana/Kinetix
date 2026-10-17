@@ -114,7 +114,10 @@ def test_nav_similarity_drop_raises_deviation():
     ctx_dropped = ScoringContext(request_or_event=req_dropped, baseline=baseline)
     res_dropped = behavior_deviation(ctx_dropped)
 
-    assert res_dropped.metric_deviations["nav_path_similarity"] > res_normal.metric_deviations["nav_path_similarity"]
+    assert (
+        res_dropped.metric_deviations["nav_path_similarity"]
+        > res_normal.metric_deviations["nav_path_similarity"]
+    )
     assert res_dropped.behavior_dev > res_normal.behavior_dev
 
 
@@ -137,13 +140,28 @@ def test_new_device_weight_attenuation():
     res_new = behavior_deviation(ctx_new)
 
     # Tap, typing, swipe weights should be exactly halved
-    assert res_new.metric_records["tap_interval_ms"].weight == res_old.metric_records["tap_interval_ms"].weight * 0.5
-    assert res_new.metric_records["typing_cps"].weight == res_old.metric_records["typing_cps"].weight * 0.5
-    assert res_new.metric_records["swipe_velocity_px_s"].weight == res_old.metric_records["swipe_velocity_px_s"].weight * 0.5
+    assert (
+        res_new.metric_records["tap_interval_ms"].weight
+        == res_old.metric_records["tap_interval_ms"].weight * 0.5
+    )
+    assert (
+        res_new.metric_records["typing_cps"].weight
+        == res_old.metric_records["typing_cps"].weight * 0.5
+    )
+    assert (
+        res_new.metric_records["swipe_velocity_px_s"].weight
+        == res_old.metric_records["swipe_velocity_px_s"].weight * 0.5
+    )
 
     # Non-touch metrics remain unchanged
-    assert res_new.metric_records["avg_speed_kmh"].weight == res_old.metric_records["avg_speed_kmh"].weight
-    assert res_new.metric_records["nav_path_similarity"].weight == res_old.metric_records["nav_path_similarity"].weight
+    assert (
+        res_new.metric_records["avg_speed_kmh"].weight
+        == res_old.metric_records["avg_speed_kmh"].weight
+    )
+    assert (
+        res_new.metric_records["nav_path_similarity"].weight
+        == res_old.metric_records["nav_path_similarity"].weight
+    )
 
 
 def test_cold_start_cohort_defaults():
@@ -166,7 +184,10 @@ def test_cold_start_cohort_defaults():
     # 3. Established baseline with 10 sessions
     ctx_est = ScoringContext(
         request_or_event=req,
-        baseline={"sessions_count": 10, "metrics": {"tap_interval_ms": {"median": 190.0, "mad": 15.0}}},
+        baseline={
+            "sessions_count": 10,
+            "metrics": {"tap_interval_ms": {"median": 190.0, "mad": 15.0}},
+        },
     )
     res_est = behavior_deviation(ctx_est)
     assert res_est.low_confidence is False
@@ -207,7 +228,7 @@ def test_ordinary_change_vs_handoff():
         "start_hour": 10.2,
         # Biometrics shifted slightly (8%) on new screen
         "tap_interval_ms": 194.0,  # +8%
-        "typing_cps": 4.2,         # -7%
+        "typing_cps": 4.2,  # -7%
         "swipe_velocity_px_s": 1070.0,  # +7%
         "interaction_timing_cv": 0.31,
         "nav_path_similarity": 0.86,
@@ -221,7 +242,9 @@ def test_ordinary_change_vs_handoff():
     res_ord = behavior_deviation(ctx_ord)
 
     assert env_ord >= 0.3, f"Ordinary change environment score must be >= 0.3, got {env_ord}"
-    assert res_ord.behavior_dev < 0.35, f"Ordinary change behavior dev must be < 0.35, got {res_ord.behavior_dev}"
+    assert res_ord.behavior_dev < 0.35, (
+        f"Ordinary change behavior dev must be < 0.35, got {res_ord.behavior_dev}"
+    )
 
     # 2. HANDOFF CASE:
     # Attacker operates account with substantially different biometric signature
@@ -229,22 +252,24 @@ def test_ordinary_change_vs_handoff():
         "is_new_device": True,
         "city": "Mumbai",
         "zone_id": "bandra_west",
-        "start_hour": 18.0,        # 8 hours off shift mean
+        "start_hour": 18.0,  # 8 hours off shift mean
         # Radical divergence across all motor-sensory metrics
         "tap_interval_ms": 270.0,  # massive dwell time
-        "typing_cps": 2.2,         # very slow typing
+        "typing_cps": 2.2,  # very slow typing
         "swipe_velocity_px_s": 550.0,  # sluggish swipes
         "interaction_timing_cv": 0.52,  # chaotic timing
-        "nav_path_similarity": 0.42,   # unfamiliar with delivery flow
-        "accept_latency_s": 14.5,       # hesitant acceptance
-        "avg_speed_kmh": 37.0,          # completely different vehicle speed
+        "nav_path_similarity": 0.42,  # unfamiliar with delivery flow
+        "accept_latency_s": 14.5,  # hesitant acceptance
+        "avg_speed_kmh": 37.0,  # completely different vehicle speed
         "route_adherence": 0.68,
         "trip_cadence_per_hr": 1.1,
     }
     ctx_handoff = ScoringContext(request_or_event=req_handoff, baseline=baseline)
     res_handoff = behavior_deviation(ctx_handoff)
 
-    assert res_handoff.behavior_dev >= 0.55, f"Handoff behavior dev must be >= 0.55, got {res_handoff.behavior_dev}"
+    assert res_handoff.behavior_dev >= 0.55, (
+        f"Handoff behavior dev must be >= 0.55, got {res_handoff.behavior_dev}"
+    )
 
 
 def test_environment_change_components_and_adjacency():
@@ -261,14 +286,24 @@ def test_environment_change_components_and_adjacency():
 
     # 1. New device alone -> 0.35
     ctx_dev = ScoringContext(
-        request_or_event={"is_new_device": True, "city": "mumbai", "zone_id": "bandra_west", "asn": "AS55836"},
+        request_or_event={
+            "is_new_device": True,
+            "city": "mumbai",
+            "zone_id": "bandra_west",
+            "asn": "AS55836",
+        },
         baseline=baseline,
     )
     assert environment_change(ctx_dev) == 0.35
 
     # 2. Distant non-adjacent city (Delhi) -> 0.30
     ctx_delhi = ScoringContext(
-        request_or_event={"is_new_device": False, "city": "delhi", "zone_id": "connaught_place", "asn": "AS55836"},
+        request_or_event={
+            "is_new_device": False,
+            "city": "delhi",
+            "zone_id": "connaught_place",
+            "asn": "AS55836",
+        },
         baseline=baseline,
     )
     # City 0.30 + new zone 0.10 = 0.40
@@ -276,28 +311,48 @@ def test_environment_change_components_and_adjacency():
 
     # 3. Adjacent city (Pune <-> Mumbai) gets 0.5x discount on city change (0.30 * 0.5 = 0.15)
     ctx_pune = ScoringContext(
-        request_or_event={"is_new_device": False, "city": "pune", "zone_id": "bandra_west", "asn": "AS55836"},
+        request_or_event={
+            "is_new_device": False,
+            "city": "pune",
+            "zone_id": "bandra_west",
+            "asn": "AS55836",
+        },
         baseline=baseline,
     )
     assert environment_change(ctx_pune) == 0.15
 
     # 4. Adjacent zone (Bandra West <-> Andheri East) gets 0.5x discount on zone change (0.10 * 0.5 = 0.05)
     ctx_adj_zone = ScoringContext(
-        request_or_event={"is_new_device": False, "city": "mumbai", "zone_id": "andheri_east", "asn": "AS55836"},
+        request_or_event={
+            "is_new_device": False,
+            "city": "mumbai",
+            "zone_id": "andheri_east",
+            "asn": "AS55836",
+        },
         baseline=baseline,
     )
     assert environment_change(ctx_adj_zone) == 0.05
 
     # 5. Non-adjacent zone -> 0.10
     ctx_diff_zone = ScoringContext(
-        request_or_event={"is_new_device": False, "city": "mumbai", "zone_id": "electronic_city", "asn": "AS55836"},
+        request_or_event={
+            "is_new_device": False,
+            "city": "mumbai",
+            "zone_id": "electronic_city",
+            "asn": "AS55836",
+        },
         baseline=baseline,
     )
     assert environment_change(ctx_diff_zone) == 0.10
 
     # 6. Clipping at 1.0
     ctx_all = ScoringContext(
-        request_or_event={"is_new_device": True, "city": "delhi", "zone_id": "dwarka", "asn": "AS99999"},
+        request_or_event={
+            "is_new_device": True,
+            "city": "delhi",
+            "zone_id": "dwarka",
+            "asn": "AS99999",
+        },
         baseline=baseline,
     )
     # 0.35 + 0.30 + 0.10 + 0.25 = 1.0
@@ -399,7 +454,9 @@ def test_thresholds_dataclass_and_override():
     assert cfg.suspected_handoff_floor == 75.0
 
     # Custom override from dictionary
-    custom = ThresholdConfig.from_policy_config({"allow_threshold": 20.0, "monitor_threshold": 40.0})
+    custom = ThresholdConfig.from_policy_config(
+        {"allow_threshold": 20.0, "monitor_threshold": 40.0}
+    )
     assert custom.allow_threshold == 20.0
     assert custom.monitor_threshold == 40.0
     # Other values remain intact

@@ -55,9 +55,13 @@ from simulator.generator import (  # noqa: E402
 from simulator.personas import RiderPersona, generate_persona  # noqa: E402
 
 
-def extract_csv_row(sess: Dict[str, Any], baseline_metrics: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
+def extract_csv_row(
+    sess: Dict[str, Any], baseline_metrics: Dict[str, Dict[str, float]]
+) -> Dict[str, Any]:
     """Flattens a session dictionary into a CSV-friendly row."""
-    is_new_dev = sess.get("threat_tags", []) == ["ORDINARY_CHANGE"] and "new_phone" in sess.get("session_id", "")
+    is_new_dev = sess.get("threat_tags", []) == ["ORDINARY_CHANGE"] and "new_phone" in sess.get(
+        "session_id", ""
+    )
     row = {
         "session_id": sess["session_id"],
         "rider_id": sess["rider_id"],
@@ -123,7 +127,9 @@ def run_seeding(
     start_time = time.perf_counter()
     rng = np.random.RandomState(seed)
 
-    print(f"[*] Starting TrustJuggler Simulator Seeding (riders={n_riders}, days={n_days}, seed={seed})...")
+    print(
+        f"[*] Starting TrustJuggler Simulator Seeding (riders={n_riders}, days={n_days}, seed={seed})..."
+    )
 
     # Re-create database tables cleanly if persisting to DB
     if persist_db:
@@ -171,66 +177,82 @@ def run_seeding(
             train_rows.append(extract_csv_row(s, baseline["metrics"]))
 
         if persist_db:
-            db_riders.append({
-                "id": p.rider_id,
-                "display_name": p.display_name,
-                "phone_number": p.phone_number,
-                "email": f"{p.rider_id}@trustjuggler.internal",
-                "status": "active",
-            })
-            db_devices.append({
-                "id": p.primary_device["id"],
-                "fingerprint": p.primary_device["fingerprint"],
-                "model": p.primary_device["model"],
-                "os_version": p.primary_device["os_version"],
-                "app_version": p.primary_device["app_version"],
-                "is_emulator": p.primary_device["is_emulator"],
-                "is_rooted": p.primary_device["is_rooted"],
-                "trust_rating": p.primary_device["trust_rating"],
-            })
-            db_device_riders.append({
-                "id": f"dr_{p.rider_id}_{p.primary_device['id']}",
-                "device_id": p.primary_device["id"],
-                "rider_id": p.rider_id,
-                "is_primary": True,
-            })
-            db_faces.append({
-                "id": p.face_id,
-                "rider_id": p.rider_id,
-                "template_version": "v1",
-                "embedding_hash": p.face_embedding_hash,
-                "encrypted_embedding": p.encrypted_face_embedding,
-            })
-            db_payouts.append({
-                "id": p.payout_account["id"],
-                "rider_id": p.rider_id,
-                "account_number_token": p.payout_account["account_token"],
-                "routing_token": p.payout_account["routing_token"],
-                "account_type": p.payout_account["account_type"],
-                "is_flagged": False,
-            })
-            db_baselines.append({
-                "id": f"base_{p.rider_id}",
-                "rider_id": p.rider_id,
-                "avg_speed_kmh": baseline["metrics"]["avg_speed_kmh"]["median"],
-                "avg_cadence_cpm": baseline["metrics"]["trip_cadence_per_hr"]["median"] * 60.0,
-                "home_lat": baseline["home_lat"],
-                "home_lng": baseline["home_lng"],
-                "typical_hours": baseline["typical_hours"],
-                "metrics_json": json.dumps(baseline["metrics"]),
-                "profiles_json": json.dumps({
-                    "zone_profile": baseline["zone_profile"],
-                    "hour_profile": baseline["hour_profile"],
-                    "nav_profile": baseline["nav_profile"],
-                }),
-            })
-            db_trust_scores.append({
-                "id": f"trust_{p.rider_id}",
-                "rider_id": p.rider_id,
-                "trust_score": 92.0,
-                "trend": "STABLE",
-                "confidence": 0.95,
-            })
+            db_riders.append(
+                {
+                    "id": p.rider_id,
+                    "display_name": p.display_name,
+                    "phone_number": p.phone_number,
+                    "email": f"{p.rider_id}@trustjuggler.internal",
+                    "status": "active",
+                }
+            )
+            db_devices.append(
+                {
+                    "id": p.primary_device["id"],
+                    "fingerprint": p.primary_device["fingerprint"],
+                    "model": p.primary_device["model"],
+                    "os_version": p.primary_device["os_version"],
+                    "app_version": p.primary_device["app_version"],
+                    "is_emulator": p.primary_device["is_emulator"],
+                    "is_rooted": p.primary_device["is_rooted"],
+                    "trust_rating": p.primary_device["trust_rating"],
+                }
+            )
+            db_device_riders.append(
+                {
+                    "id": f"dr_{p.rider_id}_{p.primary_device['id']}",
+                    "device_id": p.primary_device["id"],
+                    "rider_id": p.rider_id,
+                    "is_primary": True,
+                }
+            )
+            db_faces.append(
+                {
+                    "id": p.face_id,
+                    "rider_id": p.rider_id,
+                    "template_version": "v1",
+                    "embedding_hash": p.face_embedding_hash,
+                    "encrypted_embedding": p.encrypted_face_embedding,
+                }
+            )
+            db_payouts.append(
+                {
+                    "id": p.payout_account["id"],
+                    "rider_id": p.rider_id,
+                    "account_number_token": p.payout_account["account_token"],
+                    "routing_token": p.payout_account["routing_token"],
+                    "account_type": p.payout_account["account_type"],
+                    "is_flagged": False,
+                }
+            )
+            db_baselines.append(
+                {
+                    "id": f"base_{p.rider_id}",
+                    "rider_id": p.rider_id,
+                    "avg_speed_kmh": baseline["metrics"]["avg_speed_kmh"]["median"],
+                    "avg_cadence_cpm": baseline["metrics"]["trip_cadence_per_hr"]["median"] * 60.0,
+                    "home_lat": baseline["home_lat"],
+                    "home_lng": baseline["home_lng"],
+                    "typical_hours": baseline["typical_hours"],
+                    "metrics_json": json.dumps(baseline["metrics"]),
+                    "profiles_json": json.dumps(
+                        {
+                            "zone_profile": baseline["zone_profile"],
+                            "hour_profile": baseline["hour_profile"],
+                            "nav_profile": baseline["nav_profile"],
+                        }
+                    ),
+                }
+            )
+            db_trust_scores.append(
+                {
+                    "id": f"trust_{p.rider_id}",
+                    "rider_id": p.rider_id,
+                    "trust_score": 92.0,
+                    "trend": "STABLE",
+                    "confidence": 0.95,
+                }
+            )
 
     # 3. Build Held-out Evaluation Set (scenario_run_id='eval_set')
     # Required: 150 normal, 100 ordinary_change, 150 attacks (incl. >= 6 fraud rings)
@@ -351,17 +373,23 @@ def run_seeding(
         eval_rows.append(extract_csv_row(s, r_base))
 
         if persist_db:
-            db_sessions.append({
-                "id": s["session_id"],
-                "rider_id": s["rider_id"],
-                "device_id": s["device_id"],
-                "status": "COMPLETED",
-                "ip_address": s["ip_address"],
-                "current_risk_score": 10.0 if s["label"] == "normal" else (35.0 if s["label"] == "ordinary_change" else 85.0),
-                "current_verdict": "ALLOW" if s["label"] == "normal" else ("MONITOR" if s["label"] == "ordinary_change" else "ESCALATE"),
-                "scenario_run_id": s.get("scenario_run_id"),
-                "ground_truth_label": s.get("ground_truth_label"),
-            })
+            db_sessions.append(
+                {
+                    "id": s["session_id"],
+                    "rider_id": s["rider_id"],
+                    "device_id": s["device_id"],
+                    "status": "COMPLETED",
+                    "ip_address": s["ip_address"],
+                    "current_risk_score": 10.0
+                    if s["label"] == "normal"
+                    else (35.0 if s["label"] == "ordinary_change" else 85.0),
+                    "current_verdict": "ALLOW"
+                    if s["label"] == "normal"
+                    else ("MONITOR" if s["label"] == "ordinary_change" else "ESCALATE"),
+                    "scenario_run_id": s.get("scenario_run_id"),
+                    "ground_truth_label": s.get("ground_truth_label"),
+                }
+            )
 
     # 5. Database Batch Insertions
     if persist_db:
@@ -452,6 +480,7 @@ def run_seeding(
 def time_offset(day: int, hour_idx: int) -> Any:
     """Helper for reproducible timestamp offset."""
     from datetime import datetime, timedelta, timezone
+
     base = datetime.now(timezone.utc) + timedelta(days=day)
     return base.replace(hour=hour_idx % 24, minute=15, second=0, microsecond=0)
 

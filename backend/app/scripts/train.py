@@ -33,26 +33,30 @@ def train_model():
 
     # Class 0: Clean / Genuine trips
     n_clean = 1200
-    X_clean = np.column_stack([
-        np.random.normal(35, 12, n_clean).clip(5, 75),
-        np.random.normal(0.18, 0.05, n_clean).clip(0.05, 0.4),
-        np.random.normal(0.90, 0.06, n_clean).clip(0.7, 1.0),
-        np.random.normal(220, 30, n_clean).clip(140, 320),
-        np.random.normal(3.0, 1.8, n_clean).clip(0, 10),
-        np.random.normal(0.95, 0.04, n_clean).clip(0.85, 1.0),
-    ])
+    X_clean = np.column_stack(
+        [
+            np.random.normal(35, 12, n_clean).clip(5, 75),
+            np.random.normal(0.18, 0.05, n_clean).clip(0.05, 0.4),
+            np.random.normal(0.90, 0.06, n_clean).clip(0.7, 1.0),
+            np.random.normal(220, 30, n_clean).clip(140, 320),
+            np.random.normal(3.0, 1.8, n_clean).clip(0, 10),
+            np.random.normal(0.95, 0.04, n_clean).clip(0.85, 1.0),
+        ]
+    )
     y_clean = np.zeros(n_clean)
 
     # Class 1: Fraud / Anomalous (Handoff, GPS Spoof, Emulator)
     n_fraud = 300
-    X_fraud = np.column_stack([
-        np.random.choice([0.5, 180, 240], n_fraud),
-        np.random.choice([0.01, 1.2], n_fraud),
-        np.random.uniform(0.1, 0.6, n_fraud),
-        np.random.choice([40, 480], n_fraud),
-        np.random.uniform(25, 90, n_fraud),
-        np.random.uniform(0.05, 0.45, n_fraud),
-    ])
+    X_fraud = np.column_stack(
+        [
+            np.random.choice([0.5, 180, 240], n_fraud),
+            np.random.choice([0.01, 1.2], n_fraud),
+            np.random.uniform(0.1, 0.6, n_fraud),
+            np.random.choice([40, 480], n_fraud),
+            np.random.uniform(25, 90, n_fraud),
+            np.random.uniform(0.05, 0.45, n_fraud),
+        ]
+    )
     y_fraud = np.ones(n_fraud)
 
     X = np.vstack([X_clean, X_fraud])
@@ -88,6 +92,7 @@ def train_model():
 
     # Also train and export the 16-D Isolation Forest anomaly artifact
     from ml.train import train_isolation_forest
+
     print("[*] Training Isolation Forest anomaly detector on genuine baseline distribution...")
     iforest_path = train_isolation_forest()
     print(f"[OK] Isolation Forest artifact saved to: {iforest_path}")

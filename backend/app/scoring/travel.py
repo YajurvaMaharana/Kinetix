@@ -287,9 +287,8 @@ def gps_jump(
     )
     elapsed = interval if interval is not None else speed_res.elapsed_seconds
 
-    is_jump = (
-        speed_res.distance_km >= jump_dist_threshold_km
-        and (speed_res.is_infeasible or (elapsed > 0 and elapsed < 15.0))
+    is_jump = speed_res.distance_km >= jump_dist_threshold_km and (
+        speed_res.is_infeasible or (elapsed > 0 and elapsed < 15.0)
     )
 
     explanation = (
@@ -358,9 +357,7 @@ def route_plausibility(
     path_length = sum(segment_lengths)
 
     straightness = (
-        min(1.0, round(net_displacement / path_length, 4))
-        if path_length > 0.001
-        else 1.0
+        min(1.0, round(net_displacement / path_length, 4)) if path_length > 0.001 else 1.0
     )
 
     # 2. Speed Variance and Speed CV
@@ -569,13 +566,15 @@ def evaluate_travel(
             spoof_speed_cv=cfg.spoof_speed_cv,
             spoof_jitter_floor=cfg.spoof_jitter_floor,
         )
-        details.update({
-            "pings_count": plaus_res.pings_count,
-            "straightness_ratio": plaus_res.straightness_ratio,
-            "speed_cv": plaus_res.speed_cv,
-            "speed_variance": plaus_res.speed_variance,
-            "ping_jitter": plaus_res.ping_jitter,
-        })
+        details.update(
+            {
+                "pings_count": plaus_res.pings_count,
+                "straightness_ratio": plaus_res.straightness_ratio,
+                "speed_cv": plaus_res.speed_cv,
+                "speed_variance": plaus_res.speed_variance,
+                "ping_jitter": plaus_res.ping_jitter,
+            }
+        )
 
         if plaus_res.is_spoofed:
             has_gps_spoofing = True
@@ -612,10 +611,17 @@ def evaluate_travel(
 
         # Evaluate sequential pings for speed & jumps
         for i in range(len(pings) - 1):
-            spd = implied_speed(pings[i], pings[i + 1], min_interval_s=cfg.min_time_interval_s, max_feasible_speed_kmh=max_speed)
+            spd = implied_speed(
+                pings[i],
+                pings[i + 1],
+                min_interval_s=cfg.min_time_interval_s,
+                max_feasible_speed_kmh=max_speed,
+            )
             if spd.is_infeasible:
                 has_impossible_travel = True
-                obs_text = f"{spd.distance_km:,.0f} km in {max(1.0, spd.elapsed_seconds / 60.0):.0f} min"
+                obs_text = (
+                    f"{spd.distance_km:,.0f} km in {max(1.0, spd.elapsed_seconds / 60.0):.0f} min"
+                )
                 if "IMPOSSIBLE_TRAVEL" not in threat_tags:
                     threat_tags.append("IMPOSSIBLE_TRAVEL")
                 factors.append(
@@ -632,7 +638,12 @@ def evaluate_travel(
                 )
                 break
 
-            jump = gps_jump(pings[i], pings[i + 1], jump_dist_threshold_km=cfg.gps_jump_distance_km, max_feasible_speed_kmh=max_speed)
+            jump = gps_jump(
+                pings[i],
+                pings[i + 1],
+                jump_dist_threshold_km=cfg.gps_jump_distance_km,
+                max_feasible_speed_kmh=max_speed,
+            )
             if jump.jump_detected and not has_impossible_travel:
                 has_gps_jump = True
                 factors.append(
@@ -652,7 +663,9 @@ def evaluate_travel(
     # Check 3: Previous Session or Telemetry Impossible Travel
     # --------------------------------------------------------------------------
     # Check explicit telemetry speed or flag
-    speed_telem = float(telem.get("speed_between_pings_kmh") or req_dict.get("speed_between_pings_kmh") or 0.0)
+    speed_telem = float(
+        telem.get("speed_between_pings_kmh") or req_dict.get("speed_between_pings_kmh") or 0.0
+    )
     explicit_imp = bool(
         _bool_val(telem.get("impossible_travel_detected"))
         or _bool_val(req_dict.get("impossible_travel"))
@@ -681,7 +694,12 @@ def evaluate_travel(
     # Check previous location vs current location
     if prev_loc and not has_impossible_travel:
         curr_ping = pings[-1] if pings else req_dict
-        spd_prev = implied_speed(prev_loc, curr_ping, min_interval_s=cfg.min_time_interval_s, max_feasible_speed_kmh=max_speed)
+        spd_prev = implied_speed(
+            prev_loc,
+            curr_ping,
+            min_interval_s=cfg.min_time_interval_s,
+            max_feasible_speed_kmh=max_speed,
+        )
         if spd_prev.is_infeasible:
             has_impossible_travel = True
             if "IMPOSSIBLE_TRAVEL" not in threat_tags:
@@ -824,13 +842,17 @@ def _extract_timestamp(obj: Any) -> Optional[float]:
         return float(val)
 
     if isinstance(val, datetime):
-        return val.replace(tzinfo=timezone.utc).timestamp() if val.tzinfo is None else val.timestamp()
+        return (
+            val.replace(tzinfo=timezone.utc).timestamp() if val.tzinfo is None else val.timestamp()
+        )
 
     if isinstance(val, str):
         val_clean = val.strip().replace("Z", "+00:00")
         try:
             dt = datetime.fromisoformat(val_clean)
-            return dt.replace(tzinfo=timezone.utc).timestamp() if dt.tzinfo is None else dt.timestamp()
+            return (
+                dt.replace(tzinfo=timezone.utc).timestamp() if dt.tzinfo is None else dt.timestamp()
+            )
         except Exception:
             try:
                 return float(val_clean)

@@ -38,6 +38,7 @@ def create_all(target_engine=None):
     """
     eng = target_engine or engine
     import app.models  # noqa: F401
+
     Base.metadata.create_all(bind=eng)
 
 
@@ -49,6 +50,7 @@ def drop_all(target_engine=None):
     from sqlalchemy import text
 
     import app.models  # noqa: F401
+
     try:
         with eng.connect() as conn:
             if eng.dialect.name == "sqlite":

@@ -33,6 +33,7 @@ from app.scoring.features import (
 from app.scoring.risk import (
     Assessment,
     ScoredAssessment,
+    ScoreResult,
     ScoringContext,
     extract_device_risk,
     extract_graph_risk,
@@ -65,6 +66,7 @@ __all__ = [
     "score_session",
     "ScoredAssessment",
     "Assessment",
+    "ScoreResult",
     "ThresholdConfig",
     "DEFAULT_THRESHOLDS",
     "robust_z",

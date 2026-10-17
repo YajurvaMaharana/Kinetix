@@ -146,7 +146,7 @@ class BaselineService:
         """
         config = cfg or DEFAULT_THRESHOLDS
         dev_limit = config.adaptation_consistency_dev_limit  # 0.35
-        graph_limit = config.adaptation_graph_risk_limit     # 0.5
+        graph_limit = config.adaptation_graph_risk_limit  # 0.5
 
         if has_open_case:
             return False, "Open security case exists for rider"
@@ -161,7 +161,10 @@ class BaselineService:
             return False, f"Syndicate graph risk elevated ({graph_risk:.2f} >= {graph_limit:.2f})"
 
         if behavior_dev >= dev_limit:
-            return False, f"Motor-sensory behavior deviation elevated ({behavior_dev:.2f} >= {dev_limit:.2f})"
+            return (
+                False,
+                f"Motor-sensory behavior deviation elevated ({behavior_dev:.2f} >= {dev_limit:.2f})",
+            )
 
         return True, None
 
@@ -200,20 +203,28 @@ class BaselineService:
             is_dev_trusted = bool(state["new_device"].get("trusted"))
 
         is_new_device = bool(
-            (req_dict.get("is_new_device") or dev_info.get("is_new_device") or dev_info.get("is_new")
-             or ("new_phone" in str(req_dict.get("session_id", "")))
-             or ("newphone" in str(req_dict.get("device_id", "")).lower())
-             or ("combo" in str(req_dict.get("device_id", "")).lower()))
+            (
+                req_dict.get("is_new_device")
+                or dev_info.get("is_new_device")
+                or dev_info.get("is_new")
+                or ("new_phone" in str(req_dict.get("session_id", "")))
+                or ("newphone" in str(req_dict.get("device_id", "")).lower())
+                or ("combo" in str(req_dict.get("device_id", "")).lower())
+            )
             and not is_dev_trusted
         )
 
         # Check new city
         curr_city = str(req_dict.get("city") or "").strip().lower()
-        home_city = str(base_dict.get("home_city") or req_dict.get("home_city") or "").strip().lower()
+        home_city = (
+            str(base_dict.get("home_city") or req_dict.get("home_city") or "").strip().lower()
+        )
         usual_cities = [str(c).strip().lower() for c in state.get("usual_cities", [])]
         is_relocation = bool(
             "relocation" in str(req_dict.get("session_id", ""))
-            or (curr_city and home_city and curr_city != home_city and curr_city not in usual_cities)
+            or (
+                curr_city and home_city and curr_city != home_city and curr_city not in usual_cities
+            )
         )
 
         # Check new zone
@@ -264,7 +275,9 @@ class BaselineService:
             target_sess = config.relocation_adaptation_sessions
             target_days = config.relocation_adaptation_days
             if city_state.get("adapted"):
-                progress = f"{target_sess} of {target_sess} sessions across {target_days} days (adapted)"
+                progress = (
+                    f"{target_sess} of {target_sess} sessions across {target_days} days (adapted)"
+                )
             else:
                 progress = f"{min(c_sess, target_sess)} of {target_sess} sessions across {c_days} of {target_days} days"
 
@@ -344,7 +357,9 @@ class BaselineService:
         )
         is_relocation = bool(
             "relocation" in str(session_info.get("session_id", ""))
-            or (curr_city and home_city and curr_city != home_city and curr_city not in usual_cities)
+            or (
+                curr_city and home_city and curr_city != home_city and curr_city not in usual_cities
+            )
         )
         is_new_zone = bool(
             "new_zone" in str(session_info.get("session_id", ""))
@@ -369,7 +384,10 @@ class BaselineService:
         if not is_consistent:
             # When mixed behavior or handoff occurs, reset active streaks
             if behavior_dev >= config.adaptation_consistency_dev_limit:
-                logger.info("Mixed behavior detected (behavior_dev=%.3f). Resetting unadapted streaks.", behavior_dev)
+                logger.info(
+                    "Mixed behavior detected (behavior_dev=%.3f). Resetting unadapted streaks.",
+                    behavior_dev,
+                )
                 if not state["new_device"].get("trusted"):
                     state["new_device"]["consistent_sessions"] = 0
                 if not state["new_city"].get("adapted"):
@@ -415,7 +433,11 @@ class BaselineService:
                     dev_state["trusted_via"] = "streak"
                     adapted_components.append("new_phone")
                     cls.rebaseline_device_metrics(baseline, dev_token, [session_info])
-                    logger.info("Device %s marked TRUSTED via streak (%d sessions).", dev_token, dev_state["consistent_sessions"])
+                    logger.info(
+                        "Device %s marked TRUSTED via streak (%d sessions).",
+                        dev_token,
+                        dev_state["consistent_sessions"],
+                    )
 
         # B. Relocation Adaptation
         if is_relocation and curr_city:
@@ -445,7 +467,12 @@ class BaselineService:
                     if curr_city not in state["usual_cities"]:
                         state["usual_cities"].append(curr_city)
                     cls.adapt_city_profile_ewma(baseline, curr_city, curr_zone)
-                    logger.info("City %s fully ADAPTED after %d sessions across %d days.", curr_city, city_state["sessions"], city_state["days"])
+                    logger.info(
+                        "City %s fully ADAPTED after %d sessions across %d days.",
+                        curr_city,
+                        city_state["sessions"],
+                        city_state["days"],
+                    )
 
         # C. Zone Adaptation
         if curr_zone:
@@ -463,17 +490,23 @@ class BaselineService:
                     zone_state["adapted"] = True
                     adapted_components.append("new_zone")
                     cls.add_zone_to_profile(baseline, curr_zone)
-                    logger.info("Zone %s ADAPTED after %d consistent sessions.", curr_zone, zone_state["sessions"])
+                    logger.info(
+                        "Zone %s ADAPTED after %d consistent sessions.",
+                        curr_zone,
+                        zone_state["sessions"],
+                    )
 
         # Record history snapshot
-        state["history"].append({
-            "timestamp": now_dt.isoformat(),
-            "behavior_dev": round(behavior_dev, 4),
-            "device": dev_token,
-            "city": curr_city,
-            "zone": curr_zone,
-            "consistent": True,
-        })
+        state["history"].append(
+            {
+                "timestamp": now_dt.isoformat(),
+                "behavior_dev": round(behavior_dev, 4),
+                "device": dev_token,
+                "city": curr_city,
+                "zone": curr_zone,
+                "consistent": True,
+            }
+        )
         if len(state["history"]) > 50:
             state["history"] = state["history"][-50:]
 
@@ -483,14 +516,18 @@ class BaselineService:
         progress_str = None
         if change_type == "new_phone":
             dev_s = state["new_device"]["consistent_sessions"]
-            progress_str = f"{dev_s} of {config.device_adaptation_sessions} sessions" + (" (trusted)" if state["new_device"]["trusted"] else "")
+            progress_str = f"{dev_s} of {config.device_adaptation_sessions} sessions" + (
+                " (trusted)" if state["new_device"]["trusted"] else ""
+            )
         elif change_type == "relocation":
             cs = state["new_city"]["sessions"]
             cd = state["new_city"]["days"]
             progress_str = f"{cs} of {config.relocation_adaptation_sessions} sessions across {cd} of {config.relocation_adaptation_days} days"
         elif change_type == "new_zone":
             zs = state["new_zone"]["sessions"]
-            progress_str = f"{zs} of {config.zone_adaptation_sessions} sessions" + (" (adapted)" if state["new_zone"]["adapted"] else "")
+            progress_str = f"{zs} of {config.zone_adaptation_sessions} sessions" + (
+                " (adapted)" if state["new_zone"]["adapted"] else ""
+            )
         elif change_type == "combined":
             dev_s = state["new_device"]["consistent_sessions"]
             zs = state["new_zone"]["sessions"]
@@ -559,6 +596,7 @@ class BaselineService:
             vals = [float(s[m]) for s in sessions if m in s and s[m] is not None]
             if vals:
                 import numpy as np
+
                 med = float(np.median(vals))
                 mad = float(np.median(np.abs(vals - med))) if len(vals) > 1 else 10.0
                 dev_stats[m] = {"median": round(med, 2), "mad": round(max(mad, 1.0), 2)}

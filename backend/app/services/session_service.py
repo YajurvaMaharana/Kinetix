@@ -136,7 +136,9 @@ class SessionService:
         elif req.device:
             dev_info = req.device.model_dump()
 
-        raw_fingerprint = dev_info.get("device_id_hash") or dev_info.get("fingerprint") or session_id
+        raw_fingerprint = (
+            dev_info.get("device_id_hash") or dev_info.get("fingerprint") or session_id
+        )
         raw_ip = dev_info.get("ip_address") or "192.0.2.1"
 
         # TOKENIZE at edge before persistence
@@ -174,14 +176,20 @@ class SessionService:
         if prev_session:
             last_ev = (
                 db.query(SessionEvent)
-                .filter(SessionEvent.session_id == prev_session.id, SessionEvent.event_type == "location_ping")
+                .filter(
+                    SessionEvent.session_id == prev_session.id,
+                    SessionEvent.event_type == "location_ping",
+                )
                 .order_by(SessionEvent.created_at.desc())
                 .first()
             )
             if last_ev:
                 try:
                     previous_location = json.loads(last_ev.payload_json)
-                    if isinstance(previous_location, dict) and "created_at" not in previous_location:
+                    if (
+                        isinstance(previous_location, dict)
+                        and "created_at" not in previous_location
+                    ):
                         previous_location["created_at"] = last_ev.created_at.isoformat()
                 except Exception:
                     pass
@@ -189,7 +197,9 @@ class SessionService:
         # Extract initial pings if available in request
         init_pings = []
         if hasattr(req, "location") and req.location:
-            init_pings.append(req.location.model_dump() if hasattr(req.location, "model_dump") else req.location)
+            init_pings.append(
+                req.location.model_dump() if hasattr(req.location, "model_dump") else req.location
+            )
 
         ctx = ScoringContext(
             request_or_event=req,
@@ -213,7 +223,12 @@ class SessionService:
 
         # Process gradual baseline adaptation
         from app.services.baseline_service import baseline_service
-        session_info = req.model_dump() if hasattr(req, "model_dump") else (req if isinstance(req, dict) else {})
+
+        session_info = (
+            req.model_dump()
+            if hasattr(req, "model_dump")
+            else (req if isinstance(req, dict) else {})
+        )
         session_info["session_id"] = session.id
         session_info["device_id"] = device.id
         session_info["device_token"] = raw_fingerprint
@@ -221,7 +236,9 @@ class SessionService:
         adaptation_res = baseline_service.process_session_adaptation(
             baseline=baseline,
             session_info=session_info,
-            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0 if scored.components.get("pts_behavior") else 0.15,
+            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0
+            if scored.components.get("pts_behavior")
+            else 0.15,
             rule_matches=[f for f in scored.factors if f.category.lower() == "rule"],
             rule_floor=75.0 if scored.classification == "suspected_handoff" else 0.0,
             graph_risk=scored.components.get("pts_graph_risk", 0.0) / 12.0,
@@ -386,13 +403,17 @@ class SessionService:
 
         # 2. Rescore by invoking ONLY score_session
         device = db.query(Device).filter(Device.id == session.device_id).first()
-        baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        baseline = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        )
         policy = db.query(PolicyConfig).filter(PolicyConfig.is_active == True).first()  # noqa: E712
 
         # Query the last N location pings (from session_events)
         recent_pings_events = (
             db.query(SessionEvent)
-            .filter(SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping")
+            .filter(
+                SessionEvent.session_id == session.id, SessionEvent.event_type == "location_ping"
+            )
             .order_by(SessionEvent.created_at.desc())
             .limit(10)
             .all()
@@ -419,14 +440,20 @@ class SessionService:
         if prev_session:
             last_ev = (
                 db.query(SessionEvent)
-                .filter(SessionEvent.session_id == prev_session.id, SessionEvent.event_type == "location_ping")
+                .filter(
+                    SessionEvent.session_id == prev_session.id,
+                    SessionEvent.event_type == "location_ping",
+                )
                 .order_by(SessionEvent.created_at.desc())
                 .first()
             )
             if last_ev:
                 try:
                     previous_location = json.loads(last_ev.payload_json)
-                    if isinstance(previous_location, dict) and "created_at" not in previous_location:
+                    if (
+                        isinstance(previous_location, dict)
+                        and "created_at" not in previous_location
+                    ):
                         previous_location["created_at"] = last_ev.created_at.isoformat()
                 except Exception:
                     pass
@@ -451,13 +478,16 @@ class SessionService:
         scored = score_session(ctx)
 
         from app.services.baseline_service import baseline_service
+
         event_session_info = {"event_type": event_type, **payload}
         event_session_info["session_id"] = session.id
         event_session_info["device_id"] = device.id if device else None
         adaptation_res = baseline_service.process_session_adaptation(
             baseline=baseline,
             session_info=event_session_info,
-            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0 if scored.components.get("pts_behavior") else 0.15,
+            behavior_dev=scored.components.get("pts_behavior", 0.0) / 38.0
+            if scored.components.get("pts_behavior")
+            else 0.15,
             rule_matches=[f for f in scored.factors if f.category.lower() == "rule"],
             rule_floor=75.0 if scored.classification == "suspected_handoff" else 0.0,
             graph_risk=scored.components.get("pts_graph_risk", 0.0) / 12.0,
@@ -521,7 +551,13 @@ class SessionService:
                 created_at=chlg.created_at.isoformat(),
             )
             audit_service.log(
-                db, actor, role, "CREATE_CHALLENGE", "challenge", chlg.id, f"Event {event_type} rescore"
+                db,
+                actor,
+                role,
+                "CREATE_CHALLENGE",
+                "challenge",
+                chlg.id,
+                f"Event {event_type} rescore",
             )
         elif scored.verdict == "ESCALATE":
             session.status = "ESCALATED"
@@ -602,11 +638,18 @@ class SessionService:
             .order_by(RiskAssessment.created_at.desc())
             .first()
         )
-        baseline = db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        baseline = (
+            db.query(RiderBaseline).filter(RiderBaseline.rider_id == session.rider_id).first()
+        )
 
         from app.services.baseline_service import baseline_service
+
         change_type, progress = baseline_service.detect_change_type(
-            {"session_id": session.id, "rider_id": session.rider_id, "device_id": session.device_id},
+            {
+                "session_id": session.id,
+                "rider_id": session.rider_id,
+                "device_id": session.device_id,
+            },
             cfg=None,
         )
 
