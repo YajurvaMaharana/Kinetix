@@ -11,7 +11,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.session import Base
 
@@ -28,10 +28,19 @@ class Rider(Base):
     phone_number: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    consent_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    consent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
+
+    def __init__(self, **kwargs):
+        if "consent_version" not in kwargs:
+            kwargs["consent_version"] = "v1.0"
+        if "consent_at" not in kwargs and kwargs.get("consent_version"):
+            kwargs["consent_at"] = utcnow()
+        super().__init__(**kwargs)
 
     # Relationships
     sessions: Mapped[List["Session"]] = relationship("Session", back_populates="rider")
@@ -43,6 +52,7 @@ class Rider(Base):
         "RiderTrustScore", back_populates="rider", uselist=False
     )
     challenges: Mapped[List["Challenge"]] = relationship("Challenge", back_populates="rider")
+    appeals: Mapped[List["Appeal"]] = relationship("Appeal", back_populates="rider")
 
 
 class FaceTemplate(Base):
@@ -98,6 +108,14 @@ class Device(Base):
             return len(self.device_riders) if self.device_riders is not None else 0
         except Exception:
             return 0
+
+    @validates("fingerprint")
+    def validate_fingerprint(self, key: str, value: Any) -> str:
+        from app.services.privacy import is_token, tokenize
+        val_str = str(value or "").strip()
+        if val_str and not is_token(val_str):
+            return tokenize(val_str)
+        return val_str
 
 
 class DeviceRider(Base):
@@ -155,6 +173,7 @@ class Session(Base):
     current_verdict: Mapped[str] = mapped_column(String(32), default="ALLOW", nullable=False)
     scenario_run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     ground_truth_label: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    raw_context_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
@@ -166,6 +185,21 @@ class Session(Base):
         "RiskAssessment", back_populates="session"
     )
     challenges: Mapped[List["Challenge"]] = relationship("Challenge", back_populates="session")
+
+    @validates("ip_address")
+    def validate_ip_address(self, key: str, value: Any) -> str:
+        from app.services.privacy import IPV4_REGEX, tokenize
+        val_str = str(value or "").strip()
+        if val_str and IPV4_REGEX.match(val_str):
+            return tokenize(val_str)
+        return val_str
+
+    @validates("raw_context_json")
+    def validate_raw_context(self, key: str, value: Any) -> Optional[str]:
+        if value:
+            from app.services.privacy import scrub_raw_pii_string
+            return scrub_raw_pii_string(str(value))
+        return value
 
 
 class SessionEvent(Base):
@@ -180,6 +214,13 @@ class SessionEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     session: Mapped["Session"] = relationship("Session", back_populates="events")
+
+    @validates("payload_json")
+    def validate_payload_json(self, key: str, value: Any) -> str:
+        if value:
+            from app.services.privacy import scrub_raw_pii_string
+            return scrub_raw_pii_string(str(value))
+        return str(value) if value else "{}"
 
 
 class BehaviorSnapshot(Base):
@@ -418,6 +459,7 @@ class Case(Base):
     actions: Mapped[List["ReviewerAction"]] = relationship(
         "ReviewerAction", back_populates="case", cascade="all, delete-orphan"
     )
+    appeals: Mapped[List["Appeal"]] = relationship("Appeal", back_populates="case")
     rider: Mapped["Rider"] = relationship("Rider")
     session: Mapped[Optional["Session"]] = relationship("Session")
 
@@ -451,6 +493,13 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    @validates("detail")
+    def validate_detail(self, key: str, value: Any) -> Optional[str]:
+        if value:
+            from app.services.privacy import scrub_raw_pii_string
+            return scrub_raw_pii_string(str(value))
+        return value
 
 
 class RiderTrustScore(Base):
@@ -486,14 +535,23 @@ class Appeal(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
     case_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("cases.id"), nullable=True
+        String(64), ForeignKey("cases.id"), nullable=True, index=True
     )
     rider_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("riders.id"), nullable=False, index=True
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    supporting_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False)
+    reviewer_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    reviewer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    rider: Mapped["Rider"] = relationship("Rider", back_populates="appeals")
+    case: Mapped[Optional["Case"]] = relationship("Case", back_populates="appeals")
 
 
 class PolicyConfig(Base):

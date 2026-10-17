@@ -507,9 +507,12 @@ class BaselineService:
         if has_open_case:
             return False, "Open security case exists for rider"
 
-        matches = rule_matches or []
+        matches = [
+            r for r in (rule_matches or [])
+            if str(getattr(r, "code", None) or getattr(r, "name", None) or "") != "CONSENT_MINIMAL_MODE"
+        ]
         if len(matches) > 0 or rule_floor > 0.0:
-            codes = [getattr(r, "code", str(r)) for r in matches]
+            codes = [str(getattr(r, "code", None) or getattr(r, "name", None) or r) for r in matches]
             code_str = f" ({', '.join(codes)})" if codes else ""
             return False, f"Deterministic security rule violation fired{code_str}"
 

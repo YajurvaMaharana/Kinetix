@@ -274,7 +274,9 @@ class SessionService:
                 req_dict.get("is_new_device") or (dr_link is not None and not dr_link.is_primary)
             )
 
-            # Persist initial session record
+            # Persist initial session record with scrubbed raw_context_json
+            from app.services.privacy import scrub_raw_pii_dict
+            scrubbed_context = scrub_raw_pii_dict(req_dict)
             session = SessionModel(
                 id=sess_id,
                 rider_id=rider.id,
@@ -284,6 +286,7 @@ class SessionService:
                 ip_address=tokenized_ip,
                 current_risk_score=10.0,
                 current_verdict="ALLOW",
+                raw_context_json=json.dumps(scrubbed_context),
                 created_at=utcnow(),
                 updated_at=utcnow(),
             )
@@ -452,6 +455,18 @@ class SessionService:
             ip_address=session.ip_address if session else None,
         )
 
+        # Check Rider Consent (Storage & Purpose Limitation)
+        has_consent = bool(getattr(rider, "consent_version", None) and getattr(rider, "consent_at", None))
+        if not has_consent:
+            # Minimal Feature Set Mode:
+            # Suppress fine-grained continuous motor metrics (typing, gyro, acceleration)
+            if "telemetry" in merged_req and isinstance(merged_req["telemetry"], dict):
+                merged_req["telemetry"]["acceleration_variance"] = 0.0
+                merged_req["telemetry"]["gyro_stability"] = 1.0
+            if "biometrics" in merged_req and isinstance(merged_req["biometrics"], dict):
+                merged_req["biometrics"]["typing_cadence_cpm"] = 200.0
+                merged_req["biometrics"]["typing_cps"] = 3.3
+
         ctx = ScoringContext(
             request_or_event=merged_req,
             baseline=baseline,
@@ -468,6 +483,29 @@ class SessionService:
 
         # 4. Pure Multi-Modal Scoring
         scored = score_session(ctx)
+
+        if not has_consent:
+            # Append transparent minimal feature set indicator
+            scored.factors.append(
+                FactorSchema(
+                    name="CONSENT_MINIMAL_MODE",
+                    code="CONSENT_MINIMAL_MODE",
+                    category="RULE",
+                    impact="NEUTRAL",
+                    weight=0.0,
+                    score=0.0,
+                    description="Continuous behavioral and biometric profiling suppressed due to missing rider privacy consent.",
+                )
+            )
+            has_hard_fraud = (
+                challenge_failed
+                or has_open_case
+                or any(getattr(f, "category", "") in ("rule", "device") and getattr(f, "score", 0.0) >= 40.0 for f in scored.factors)
+            )
+            if scored.risk_score > 59.0 and not has_hard_fraud:
+                scored.risk_score = 55.0
+                scored.verdict = "CHALLENGE"
+                scored.risk_tier = "MEDIUM"
 
         # Measure end-to-end latency in milliseconds (guarantee > 0.0)
         elapsed_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
@@ -558,15 +596,18 @@ class SessionService:
         )
         db.add(snapshot)
 
-        # 7. Persist SessionEvent
+        # 7. Persist SessionEvent with PII Scrubbed Payload
+        from app.services.privacy import scrub_raw_pii_dict
+        scrubbed_event_payload = scrub_raw_pii_dict(payload_data)
         event_record = SessionEvent(
             id=f"ev_{uuid.uuid4().hex[:8]}",
             session_id=session.id,
             event_type=event_type,
-            payload_json=json.dumps(payload_data),
+            payload_json=json.dumps(scrubbed_event_payload),
             created_at=utcnow(),
         )
         db.add(event_record)
+        session.raw_context_json = json.dumps(scrubbed_event_payload)
 
         # 8. Update Session state
         session.current_risk_score = scored.risk_score

@@ -13,6 +13,11 @@ import {
   LivenessPrompt,
   FaceVerifyResponse,
   ChallengeFallbackResponse,
+  RiderExplanation,
+  Appeal,
+  AppealCreateRequest,
+  AppealActionRequest,
+  RetentionPurgeResponse,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -299,5 +304,118 @@ export async function fallbackChallenge(
     method: "POST",
     body: JSON.stringify(payload),
     role,
+  });
+}
+
+/**
+ * Retrieves rider-safe explanation of session verdict, plain reasons, and resolution options.
+ */
+export async function getRiderExplanation(
+  sessionId: string,
+  riderId?: string,
+  role?: Role
+): Promise<RiderExplanation> {
+  const headers: Record<string, string> = {};
+  if (riderId) {
+    headers["X-Rider-Id"] = riderId;
+  }
+  return apiFetch<RiderExplanation>(`/rider-view/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "GET",
+    role: role || "rider",
+    headers,
+  });
+}
+
+/**
+ * Submits a new formal appeal on behalf of a rider.
+ */
+export async function createAppeal(
+  payload: AppealCreateRequest,
+  riderId?: string,
+  role?: Role
+): Promise<Appeal> {
+  const headers: Record<string, string> = {};
+  if (riderId) {
+    headers["X-Rider-Id"] = riderId;
+  }
+  return apiFetch<Appeal>("/appeals", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    role: role || "rider",
+    headers,
+  });
+}
+
+/**
+ * Lists appeals with optional status filter.
+ */
+export async function listAppeals(
+  statusFilter?: string,
+  riderId?: string,
+  role?: Role
+): Promise<Appeal[]> {
+  const params = new URLSearchParams();
+  if (statusFilter && statusFilter !== "ALL") {
+    params.set("status", statusFilter);
+  }
+  if (riderId) {
+    params.set("rider_id", riderId);
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const headers: Record<string, string> = {};
+  if (riderId) {
+    headers["X-Rider-Id"] = riderId;
+  }
+  return apiFetch<Appeal[]>(`/appeals${query}`, {
+    method: "GET",
+    role: role || "analyst",
+    headers,
+  });
+}
+
+/**
+ * Retrieves a single appeal record.
+ */
+export async function getAppeal(
+  appealId: string,
+  riderId?: string,
+  role?: Role
+): Promise<Appeal> {
+  const headers: Record<string, string> = {};
+  if (riderId) {
+    headers["X-Rider-Id"] = riderId;
+  }
+  return apiFetch<Appeal>(`/appeals/${encodeURIComponent(appealId)}`, {
+    method: "GET",
+    role: role || "analyst",
+    headers,
+  });
+}
+
+/**
+ * Resolves an appeal with a ruling ('upheld' or 'overturned') and reviewer notes.
+ */
+export async function resolveAppeal(
+  appealId: string,
+  payload: AppealActionRequest,
+  role?: Role
+): Promise<Appeal> {
+  return apiFetch<Appeal>(`/appeals/${encodeURIComponent(appealId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    role: role || "analyst",
+  });
+}
+
+/**
+ * Triggers admin data retention purge for raw telemetry older than N days.
+ */
+export async function purgeRetention(
+  days: number = 90,
+  role?: Role
+): Promise<RetentionPurgeResponse> {
+  return apiFetch<RetentionPurgeResponse>(`/admin/retention/purge?days=${days}`, {
+    method: "POST",
+    role: role || "admin",
   });
 }

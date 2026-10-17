@@ -14,6 +14,8 @@ import {
   Sparkles,
   CheckCircle2,
   UserCheck,
+  Eye,
+  FileText,
 } from "lucide-react";
 import { Role } from "@/lib/types";
 import { getActiveRole, setActiveRole } from "@/lib/api";
@@ -26,6 +28,8 @@ const navItems = [
   { name: "Fraud Graph", href: "/graph", icon: GitFork },
   { name: "Payouts", href: "/payouts", icon: Banknote },
   { name: "Policy Simulator", href: "/policy", icon: Scale },
+  { name: "Appeals & Redress", href: "/appeals", icon: FileText },
+  { name: "Rider View", href: "/rider/explain", icon: Eye },
   { name: "Demo Controls", href: "/demo", icon: Sparkles },
   { name: "Evaluation", href: "/evaluation", icon: CheckCircle2 },
 ];

@@ -620,3 +620,70 @@ class PayoutAccountUpdatePayload(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+
+class ActionOption(BaseModel):
+    action: str  # "selfie" | "otp" | "support" | "appeal"
+    title: str
+    description: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class RiderExplanationResponse(BaseModel):
+    session_id: str
+    headline: str
+    plain_reasons: List[str]
+    rider_safe_text: str
+    verdict: str
+    what_you_can_do: List[ActionOption]
+    case_id: Optional[str] = None
+    appeal_eligible: bool = True
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class AppealCreateRequest(BaseModel):
+    case_id: Optional[str] = None
+    rider_id: Optional[str] = None
+    reason: str
+    supporting_text: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class AppealActionRequest(BaseModel):
+    action: str  # "upheld" | "overturned"
+    note: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class AppealResponse(BaseModel):
+    id: str
+    appeal_id: Optional[str] = None
+    case_id: Optional[str] = None
+    rider_id: str
+    rider_name: Optional[str] = None
+    reason: str
+    supporting_text: Optional[str] = None
+    status: str  # "PENDING" | "UPHELD" | "OVERTURNED"
+    reviewer_id: Optional[str] = None
+    reviewer_notes: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class RetentionPurgeResponse(BaseModel):
+    status: str
+    retention_days: int
+    cutoff_date: str
+    snapshots_deleted: int
+    session_events_deleted: int
+    face_templates_deleted: int
+    audit_logs_retained: int
+    baselines_retained: int
+
+    model_config = ConfigDict(extra="ignore")
+

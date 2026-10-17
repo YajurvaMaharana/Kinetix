@@ -367,3 +367,58 @@ export interface ChallengeFallbackResponse {
   case_id?: string | null;
   message: string;
 }
+
+export interface ActionOption {
+  action: "selfie" | "otp" | "support" | "appeal";
+  title: string;
+  description: string;
+}
+
+export interface RiderExplanation {
+  session_id: string;
+  headline: string;
+  plain_reasons: string[];
+  rider_safe_text: string;
+  verdict: string;
+  what_you_can_do: ActionOption[];
+  case_id?: string | null;
+  appeal_eligible: boolean;
+}
+
+export interface Appeal {
+  id: string;
+  appeal_id?: string | null;
+  case_id?: string | null;
+  rider_id: string;
+  rider_name?: string | null;
+  reason: string;
+  supporting_text?: string | null;
+  status: "PENDING" | "UPHELD" | "OVERTURNED";
+  reviewer_id?: string | null;
+  reviewer_notes?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface AppealCreateRequest {
+  case_id?: string | null;
+  rider_id?: string | null;
+  reason: string;
+  supporting_text?: string | null;
+}
+
+export interface AppealActionRequest {
+  action: "upheld" | "overturned";
+  note: string;
+}
+
+export interface RetentionPurgeResponse {
+  status: string;
+  retention_days: number;
+  cutoff_date: string;
+  snapshots_deleted: number;
+  session_events_deleted: number;
+  face_templates_deleted: number;
+  audit_logs_retained: number;
+  baselines_retained: number;
+}

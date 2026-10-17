@@ -30,6 +30,10 @@ from app.models.entities import (
     Session as SessionModel,
 )
 from app.schemas.contracts import (
+    ActionOption,
+    AppealActionRequest,
+    AppealCreateRequest,
+    AppealResponse,
     AssessmentSchema,
     AuditLogResponse,
     CaseActionRequest,
@@ -57,6 +61,8 @@ from app.schemas.contracts import (
     PayoutRequestCreate,
     PayoutResponse,
     PolicyFeedbackSummaryResponse,
+    RetentionPurgeResponse,
+    RiderExplanationResponse,
     RiderResponse,
     SessionCreateRequest,
     SessionEventRequest,
@@ -64,12 +70,15 @@ from app.schemas.contracts import (
     TimelineItem,
     TimelineResponse,
 )
+from app.scoring.explain import generate_rider_safe_text
+from app.services.appeal_service import appeal_service
 from app.services.audit_service import audit_service
 from app.services.case_service import case_service, format_age
 from app.services.events_bus import event_bus
 from app.services.face_service import face_service
 from app.services.payout_service import payout_service
 from app.services.privacy import mask_name, mask_phone
+from app.services.retention_service import retention_service
 from app.services.session_service import session_service
 
 api_router = APIRouter()
@@ -336,6 +345,175 @@ async def get_session_timeline(session_id: str, db: Session = Depends(get_db)):
         entity_type="session",
         events_count=len(timeline_items),
         timeline=timeline_items,
+    )
+
+
+@api_router.get(
+    "/rider-view/sessions/{session_id}",
+    response_model=RiderExplanationResponse,
+    tags=["Rider"],
+)
+async def get_rider_session_explanation(
+    session_id: str,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Rider-safe explanation of session status, plain reasons, and actionable resolution options.
+    Guarantees cross-rider data isolation (403 if accessing another rider's session).
+    Contains strictly ZERO internal risk scores, model internals, or numeric thresholds.
+    """
+    import re
+
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found",
+        )
+
+    # Cross-rider access control
+    if role == "rider":
+        effective_rider = x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+        if effective_rider and effective_rider != session.rider_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: rider cannot read other riders' data.",
+            )
+
+    latest_eval = (
+        db.query(RiskAssessment)
+        .filter(RiskAssessment.session_id == session.id)
+        .order_by(RiskAssessment.created_at.desc())
+        .first()
+    )
+
+    case = (
+        db.query(Case)
+        .filter(Case.session_id == session.id)
+        .order_by(Case.created_at.desc())
+        .first()
+    )
+    if not case:
+        case = (
+            db.query(Case)
+            .filter(Case.rider_id == session.rider_id, Case.status.in_(["OPEN", "UNDER_REVIEW"]))
+            .order_by(Case.created_at.desc())
+            .first()
+        )
+
+    active_challenge = (
+        db.query(Challenge)
+        .filter(Challenge.session_id == session.id, Challenge.status == "PENDING")
+        .order_by(Challenge.created_at.desc())
+        .first()
+    )
+
+    classification = getattr(latest_eval, "classification", "normal") if latest_eval else "normal"
+    rec_action = (
+        getattr(latest_eval, "recommended_action", None)
+        or getattr(latest_eval, "verdict", None)
+        or "ALLOW"
+    )
+    if active_challenge:
+        if active_challenge.challenge_type == "LIVENESS_SELFIE":
+            rec_action = "REQUIRE_LIVENESS"
+        elif active_challenge.challenge_type == "OTP":
+            rec_action = "REQUIRE_OTP"
+
+    safe_text = generate_rider_safe_text(
+        classification=classification,
+        is_new_device=False,
+        city="",
+        zone_id="",
+        recommended_action=rec_action,
+    )
+
+    # Guarantee zero digits or numeric thresholds in rider_safe_text
+    safe_text = re.sub(r"\b\d+(\.\d+)?\b", "", safe_text).strip()
+
+    # Determine transparent headline and plain verdict
+    if "OTP" in rec_action:
+        headline = "One-Time Passcode Check Required"
+        verdict = "Verification Pending"
+    elif "LIVENESS" in rec_action or "SELFIE" in rec_action:
+        headline = "Quick Identity Verification Required"
+        verdict = "Verification Pending"
+    elif rec_action in ("ESCALATE", "BLOCK") or (case and case.status in ("OPEN", "UNDER_REVIEW")):
+        headline = "Account Temporarily Under Review"
+        verdict = "Under Review"
+    else:
+        headline = "Account Active and Secure"
+        verdict = "Clear"
+
+    # Plain reasons: explain security reasons without scores or thresholds
+    plain_reasons: List[str] = []
+    if latest_eval and latest_eval.factors:
+        for f in latest_eval.factors:
+            code = (getattr(f, "code", None) or getattr(f, "name", "") or "").upper()
+            cat = (getattr(f, "category", "") or "").lower()
+            if "BEHAVIOR" in code or cat == "behavior":
+                plain_reasons.append("Interaction rhythm patterns differed from regular usage baseline.")
+            elif "ENV" in code or cat == "environment":
+                plain_reasons.append("Sign-in initiated from an unfamiliar environment or hardware profile.")
+            elif "SENSITIVE" in code or cat == "sensitive":
+                plain_reasons.append("Recent sensitive account or payout modifications were registered.")
+            elif "TRAVEL" in code or cat == "travel":
+                plain_reasons.append("Location changes observed between consecutive sign-in attempts.")
+            elif "DEVICE" in code or cat == "device":
+                plain_reasons.append("Device configuration signals indicated unexpected environment parameters.")
+            elif "CONSENT" in code:
+                plain_reasons.append("Operating in minimal privacy mode pending biometric consent confirmation.")
+
+    if not plain_reasons:
+        if verdict == "Clear":
+            plain_reasons.append("All automated security checks passed successfully.")
+            plain_reasons.append("No unusual behavioral or network shifts observed.")
+        else:
+            plain_reasons.append("Routine security safeguards triggered for your protection.")
+
+    # Remove duplicates preserving order, and guarantee no digits exist
+    deduped_reasons = []
+    for r in plain_reasons:
+        clean_r = re.sub(r"\b\d+(\.\d+)?\b", "", r).strip()
+        if clean_r and clean_r not in deduped_reasons:
+            deduped_reasons.append(clean_r)
+
+    # Resolution action options (always includes selfie, otp, appeal, support)
+    what_you_can_do: List[ActionOption] = [
+        ActionOption(
+            action="selfie",
+            title="Complete Selfie Verification",
+            description="Take a quick face selfie to verify your identity and restore instant dispatches.",
+        ),
+        ActionOption(
+            action="otp",
+            title="Enter SMS Passcode",
+            description="Confirm your sign-in with the one-time code sent to your registered mobile phone.",
+        ),
+        ActionOption(
+            action="appeal",
+            title="Submit an Appeal",
+            description="If you believe this security review is mistaken, submit an appeal for expedited human review.",
+        ),
+        ActionOption(
+            action="support",
+            title="Contact Safety Support",
+            description="Our dedicated Trust & Safety operations team is available to assist you immediately.",
+        ),
+    ]
+
+    return RiderExplanationResponse(
+        session_id=session.id,
+        headline=headline,
+        plain_reasons=deduped_reasons,
+        rider_safe_text=safe_text,
+        verdict=verdict,
+        what_you_can_do=what_you_can_do,
+        case_id=case.id if case else None,
+        appeal_eligible=True,
     )
 
 
@@ -1658,7 +1836,263 @@ def evaluate_payout_preview(
 
 
 # ==============================================================================
-# 8. Server-Sent Events (SSE) Stream
+# 8. Data Retention & Privacy Management
+# ==============================================================================
+@api_router.post(
+    "/admin/retention/purge",
+    response_model=RetentionPurgeResponse,
+    tags=["Admin", "Retention"],
+)
+def purge_retention(
+    days: int = Query(default=90, ge=1, description="Purge raw telemetry older than N days"),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="admin", alias="X-Actor"),
+):
+    """
+    Deletes raw behavioral snapshots, session telemetry events older than N days,
+    and expired face templates past retention_until.
+    Preserves aggregated baseline features and immutable audit logs.
+    Restricted to role=admin.
+    """
+    if role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: admin role required for data retention purge.",
+        )
+
+    res = retention_service.purge_expired_data(
+        db=db,
+        days=days,
+        actor=x_actor or "admin",
+        role=role,
+    )
+    return RetentionPurgeResponse(**res)
+
+
+# ==============================================================================
+# 9. Appeals & Redress Workflow
+# ==============================================================================
+@api_router.post(
+    "/appeals",
+    response_model=AppealResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Appeals"],
+)
+def create_appeal(
+    payload: AppealCreateRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="rider", alias="X-Actor"),
+):
+    """
+    Submits a new formal appeal on behalf of a rider.
+    Enforces rider ownership when called with role=rider.
+    """
+    target_rider_id = payload.rider_id or x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+    if not target_rider_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rider identity is required to file an appeal.",
+        )
+
+    if role == "rider":
+        effective_rider = x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+        if effective_rider and target_rider_id != effective_rider:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: rider can only submit appeals for their own account.",
+            )
+
+    appeal = appeal_service.create_appeal(
+        db=db,
+        case_id=payload.case_id,
+        rider_id=target_rider_id,
+        reason=payload.reason,
+        supporting_text=payload.supporting_text,
+        actor=x_actor or target_rider_id,
+        role=role,
+    )
+
+    rider = db.query(Rider).filter(Rider.id == appeal.rider_id).first()
+    return AppealResponse(
+        id=appeal.id,
+        appeal_id=appeal.id,
+        case_id=appeal.case_id,
+        rider_id=appeal.rider_id,
+        rider_name=mask_name(rider.display_name) if rider and role in ("analyst", "investigator") else (rider.display_name if rider else None),
+        reason=appeal.reason,
+        supporting_text=appeal.supporting_text,
+        status=appeal.status,
+        reviewer_id=appeal.reviewer_id,
+        reviewer_notes=appeal.reviewer_notes,
+        created_at=appeal.created_at.isoformat(),
+        updated_at=appeal.updated_at.isoformat() if appeal.updated_at else None,
+    )
+
+
+@api_router.get(
+    "/appeals",
+    response_model=List[AppealResponse],
+    tags=["Appeals"],
+)
+def list_appeals(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    rider_id: Optional[str] = Query(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Lists appeals with optional status and rider filtering.
+    For role=rider, queries are strictly constrained to the authenticated rider's own records.
+    """
+    effective_rider_id = rider_id
+    if role == "rider":
+        effective_rider_id = x_rider_id or (x_actor if x_actor not in ("rider", "system") else rider_id)
+
+    appeals = appeal_service.list_appeals(
+        db=db,
+        status_filter=status_filter,
+        rider_id=effective_rider_id,
+        skip=skip,
+        limit=limit,
+        role=role,
+    )
+
+    results: List[AppealResponse] = []
+    for a in appeals:
+        r = db.query(Rider).filter(Rider.id == a.rider_id).first()
+        r_name = r.display_name if r else None
+        if role in ("analyst", "investigator") and r_name:
+            r_name = mask_name(r_name)
+        results.append(
+            AppealResponse(
+                id=a.id,
+                appeal_id=a.id,
+                case_id=a.case_id,
+                rider_id=a.rider_id,
+                rider_name=r_name,
+                reason=a.reason,
+                supporting_text=a.supporting_text,
+                status=a.status,
+                reviewer_id=a.reviewer_id,
+                reviewer_notes=a.reviewer_notes,
+                created_at=a.created_at.isoformat(),
+                updated_at=a.updated_at.isoformat() if a.updated_at else None,
+            )
+        )
+    return results
+
+
+@api_router.get(
+    "/appeals/{appeal_id}",
+    response_model=AppealResponse,
+    tags=["Appeals"],
+)
+def get_appeal(
+    appeal_id: str,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_rider_id: Optional[str] = Header(default=None, alias="X-Rider-Id"),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Retrieves a single appeal record. Enforces cross-rider access isolation for role=rider.
+    """
+    effective_rider = x_rider_id or (x_actor if x_actor not in ("rider", "system") else None)
+    appeal = appeal_service.get_appeal(
+        db=db,
+        appeal_id=appeal_id,
+        rider_id=effective_rider,
+        role=role,
+    )
+    r = db.query(Rider).filter(Rider.id == appeal.rider_id).first()
+    r_name = r.display_name if r else None
+    if role in ("analyst", "investigator") and r_name:
+        r_name = mask_name(r_name)
+
+    return AppealResponse(
+        id=appeal.id,
+        appeal_id=appeal.id,
+        case_id=appeal.case_id,
+        rider_id=appeal.rider_id,
+        rider_name=r_name,
+        reason=appeal.reason,
+        supporting_text=appeal.supporting_text,
+        status=appeal.status,
+        reviewer_id=appeal.reviewer_id,
+        reviewer_notes=appeal.reviewer_notes,
+        created_at=appeal.created_at.isoformat(),
+        updated_at=appeal.updated_at.isoformat() if appeal.updated_at else None,
+    )
+
+
+@api_router.patch(
+    "/appeals/{appeal_id}",
+    response_model=AppealResponse,
+    tags=["Appeals"],
+)
+def update_appeal(
+    appeal_id: str,
+    payload: AppealActionRequest,
+    db: Session = Depends(get_db),
+    role: str = Depends(get_role),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Analyst review action on an appeal:
+    action in {'upheld', 'overturned'} with mandatory reviewer note.
+    Overturning an appeal:
+    - lifts restrictions (rider.status = 'active')
+    - marks the case false_positive
+    - releases eligible held payouts
+    - restores trust history
+    - records feedback for adaptive policy tuning
+    - writes audit logs
+    """
+    if role == "rider":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: riders cannot resolve or adjudicate appeals.",
+        )
+
+    appeal = appeal_service.handle_appeal_action(
+        db=db,
+        appeal_id=appeal_id,
+        action=payload.action,
+        note=payload.note,
+        actor=x_actor or "analyst",
+        role=role,
+    )
+
+    r = db.query(Rider).filter(Rider.id == appeal.rider_id).first()
+    r_name = r.display_name if r else None
+    if role in ("analyst", "investigator") and r_name:
+        r_name = mask_name(r_name)
+
+    return AppealResponse(
+        id=appeal.id,
+        appeal_id=appeal.id,
+        case_id=appeal.case_id,
+        rider_id=appeal.rider_id,
+        rider_name=r_name,
+        reason=appeal.reason,
+        supporting_text=appeal.supporting_text,
+        status=appeal.status,
+        reviewer_id=appeal.reviewer_id,
+        reviewer_notes=appeal.reviewer_notes,
+        created_at=appeal.created_at.isoformat(),
+        updated_at=appeal.updated_at.isoformat() if appeal.updated_at else None,
+    )
+
+
+# ==============================================================================
+# 10. Server-Sent Events (SSE) Stream
 # ==============================================================================
 @api_router.get("/stream/events", tags=["Streaming"])
 async def stream_events(request: Request):
