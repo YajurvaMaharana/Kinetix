@@ -126,15 +126,71 @@ export interface CaseItem {
   notes?: CaseNote[];
 }
 
+export type AppealStatus = "NEW" | "IN_REVIEW" | "AWAITING_RIDER" | "RESOLVED";
+
+export interface AppealReasonCode {
+  code: string;
+  title: string;
+  plain_language: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+}
+
+export interface AppealEvidence {
+  id: string;
+  name: string;
+  type: "video" | "image" | "pdf" | "log";
+  size: string;
+  timestamp: string;
+  description: string;
+}
+
+export interface AppealAIRecommendation {
+  verdict: "APPROVE" | "REJECT" | "REQUEST_INFO";
+  confidence: number;
+  rationale: string;
+  suggested_redress: string[];
+}
+
+export interface AppealAuditEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  role: string;
+  action: string;
+  note?: string;
+}
+
+export interface AppealOriginalDecision {
+  verdict: string;
+  enforcement_title: string;
+  held_amount: number;
+  enforced_at: string;
+  reason_codes: AppealReasonCode[];
+}
+
 export interface AppealItem {
   id: string;
   case_id?: string;
-  rider_id?: string;
+  rider_id: string;
+  rider_name: string;
+  rider_phone?: string;
+  rider_hub?: string;
   reason: string;
+  rider_statement: string;
   supporting_text?: string;
-  status: "PENDING" | "OVERTURNED" | "UPHELD";
+  status: AppealStatus;
+  resolution?: "APPROVED" | "REJECTED";
   reviewer_note?: string;
+  sla_deadline: string; // ISO string
   created_at: string;
+  original_decision: AppealOriginalDecision;
+  uploaded_evidence: AppealEvidence[];
+  ai_recommendation: AppealAIRecommendation;
+  audit_trail: AppealAuditEntry[];
+  redress_applied?: {
+    release_payout: boolean;
+    restore_account: boolean;
+  };
 }
 
 export interface PayoutItem {
@@ -458,19 +514,307 @@ let mockAppeals: AppealItem[] = [
     id: "APP-401",
     case_id: "CASE-9004",
     rider_id: "CR-8941",
-    reason: "False positive velocity jump caused by tunnel GPS multipath.",
-    supporting_text: "Attached dashcam footage demonstrating constant 35mph speed in 99 tunnel.",
-    status: "PENDING",
-    created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    rider_name: "Alex Rivera",
+    rider_phone: "+1 (555) 234-8901",
+    rider_hub: "Downtown",
+    reason: "False positive velocity jump caused by tunnel GPS multipath reflection.",
+    rider_statement:
+      "I was delivering Order #8921 through the SR-99 underground tunnel during rush hour. When I entered the tunnel, my navigation lost satellite lock and drifted erratically. When I exited at Seneca St, the app calculated an impossible speed of 184 km/h because it re-acquired coordinates instantly. I was driving a standard Honda Civic at 35 mph the whole time. Please check my dashcam video and toll transponder timestamp.",
+    status: "NEW",
+    sla_deadline: new Date(Date.now() + 1000 * 60 * 48).toISOString(), // 48m left
+    created_at: new Date(Date.now() - 1000 * 60 * 72).toISOString(),
+    original_decision: {
+      verdict: "ESCALATE_AND_HOLD",
+      enforcement_title: "Velocity Spoofing & Automated Payout Hold",
+      held_amount: 1240.0,
+      enforced_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+      reason_codes: [
+        {
+          code: "GEO-VEL-99",
+          title: "Kinematic Teleportation Anomaly",
+          plain_language: "Coordinates shifted 1.8km in 35 seconds, exceeding normal roadway acceleration limits.",
+          severity: "HIGH",
+        },
+        {
+          code: "LIV-TIMEOUT-04",
+          title: "Biometric Challenge Expired",
+          plain_language: "3D camera selfie prompt was not completed within the mandatory 5-minute safety window.",
+          severity: "MEDIUM",
+        },
+      ],
+    },
+    uploaded_evidence: [
+      {
+        id: "ev-1",
+        name: "SR99_Tunnel_Dashcam_1418UTC.mp4",
+        type: "video",
+        size: "42.8 MB",
+        timestamp: "14:18 UTC",
+        description: "Front dashcam video showing steady 35 mph traffic flow inside tunnel.",
+      },
+      {
+        id: "ev-2",
+        name: "GoodToGo_Toll_Receipt_Nov17.pdf",
+        type: "pdf",
+        size: "245 KB",
+        timestamp: "14:19 UTC",
+        description: "Electronic toll transponder pass record confirming vehicle entry at 14:16 and exit at 14:21.",
+      },
+      {
+        id: "ev-3",
+        name: "Garmin_GPX_Telemetry_Log.log",
+        type: "log",
+        size: "1.2 MB",
+        timestamp: "14:22 UTC",
+        description: "Independent hardware GPS track confirming zero velocity spikes.",
+      },
+    ],
+    ai_recommendation: {
+      verdict: "APPROVE",
+      confidence: 94,
+      rationale:
+        "Dashcam optical flow and electronic toll gantry timestamps conclusively corroborate tunnel entry. GPS coordinate jump matches canonical urban canyon multipath reflection at tunnel portal. Zero indicators of software hooking or Magisk root.",
+      suggested_redress: [
+        "Release held payout ($1,240.00) immediately to courier bank account",
+        "Restore courier trust score from 42% back to 91%",
+        "Whitelist SR-99 tunnel transit corridor for future automated geofence filtering",
+      ],
+    },
+    audit_trail: [
+      {
+        id: "aud-1",
+        timestamp: "90m ago",
+        actor: "Risk Engine",
+        role: "Automated System",
+        action: "Case CASE-9004 generated and payout held ($1,240.00).",
+      },
+      {
+        id: "aud-2",
+        timestamp: "72m ago",
+        actor: "Alex Rivera",
+        role: "Courier (CR-8941)",
+        action: "Submitted formal appeal with 3 evidence attachments.",
+      },
+      {
+        id: "aud-3",
+        timestamp: "70m ago",
+        actor: "SchemeSetu / AI Copilot",
+        role: "Evidence Analyzer",
+        action: "Ingested dashcam video and toll pass. Confidence scored at 94% APPROVE.",
+      },
+    ],
+  },
+  {
+    id: "APP-402",
+    case_id: "CASE-9005",
+    rider_id: "CR-9023",
+    rider_name: "Tariq Vance",
+    rider_phone: "+1 (555) 782-9914",
+    rider_hub: "Downtown",
+    reason: "Legitimate device sharing with courier brother on alternating shifts.",
+    rider_statement:
+      "My brother and I share one phone to save money on cell service. When my shift ends at 2 PM, he logs in with his account and starts his shift. We are not a device farm. We live in the same apartment and use the same WiFi network.",
+    status: "IN_REVIEW",
+    sla_deadline: new Date(Date.now() + 1000 * 60 * 135).toISOString(), // 2h 15m left
+    created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+    original_decision: {
+      verdict: "SUSPEND_AND_ESCROW",
+      enforcement_title: "Device Farm Syndicate & Payout Escrow Hold",
+      held_amount: 840.5,
+      enforced_at: new Date(Date.now() - 1000 * 60 * 200).toISOString(),
+      reason_codes: [
+        {
+          code: "HW-CLUSTER-902",
+          title: "Hardware Fingerprint Collision",
+          plain_language: "Same IMEI and Magisk root signature active across 4 distinct courier profiles simultaneously.",
+          severity: "HIGH",
+        },
+        {
+          code: "BNK-ROUT-44",
+          title: "Shared Bank Routing Conflict",
+          plain_language: "Beneficiary bank account is shared with 3 other flagged couriers.",
+          severity: "HIGH",
+        },
+      ],
+    },
+    uploaded_evidence: [
+      {
+        id: "ev-4",
+        name: "Apartment_Lease_Agreement.pdf",
+        type: "pdf",
+        size: "3.4 MB",
+        timestamp: "11:20 UTC",
+        description: "Residential lease showing shared co-tenancy.",
+      },
+      {
+        id: "ev-5",
+        name: "T-Mobile_Family_Plan_Bill.pdf",
+        type: "pdf",
+        size: "520 KB",
+        timestamp: "11:22 UTC",
+        description: "Family phone plan statement.",
+      },
+    ],
+    ai_recommendation: {
+      verdict: "REJECT",
+      confidence: 88,
+      rationale:
+        "Telemetric telemetry indicates simultaneous concurrent order dispatches occurring within 90 seconds from 3 distinct locations on the same IMEI. Physical device sharing on alternating shifts does not explain concurrent deliveries. Bank account routing matches syndicate #C-902.",
+      suggested_redress: [
+        "Maintain account suspension",
+        "Request secondary bank identity attestation",
+      ],
+    },
+    audit_trail: [
+      {
+        id: "aud-4",
+        timestamp: "3h ago",
+        actor: "Tariq Vance",
+        role: "Courier (CR-9023)",
+        action: "Appeal filed claiming family device sharing.",
+      },
+      {
+        id: "aud-5",
+        timestamp: "2h ago",
+        actor: "Elena Rostova",
+        role: "Senior Fraud Analyst",
+        action: "Claimed appeal for active investigation. Subpoenaed carrier logs.",
+      },
+    ],
+  },
+  {
+    id: "APP-403",
+    case_id: "CASE-9010",
+    rider_id: "CR-6650",
+    rider_name: "Kenji Sato",
+    rider_phone: "+1 (555) 302-8812",
+    rider_hub: "Metro Core",
+    reason: "Co-riding with colleague due to scooter tire puncture.",
+    rider_statement:
+      "My scooter had a rear tire puncture on Highway 99 at 13:45. My fellow courier Aria Thorne stopped and gave me a ride with my thermal bag so my customer's soup wouldn't get cold. We were traveling together for emergency safety, not running a ghost rider scheme.",
+    status: "AWAITING_RIDER",
+    sla_deadline: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(), // 18h left
+    created_at: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
+    original_decision: {
+      verdict: "CHALLENGE_FLAG",
+      enforcement_title: "Dual-App Colocation Probe",
+      held_amount: 710.0,
+      enforced_at: new Date(Date.now() - 1000 * 60 * 320).toISOString(),
+      reason_codes: [
+        {
+          code: "COL-TANDEM-02",
+          title: "Tandem Trajectory Correlation > 98%",
+          plain_language: "Two couriers maintained identical speeds and turns for over 45 minutes across 14 km.",
+          severity: "MEDIUM",
+        },
+      ],
+    },
+    uploaded_evidence: [
+      {
+        id: "ev-6",
+        name: "Flat_Tire_Photo_Highway99.jpg",
+        type: "image",
+        size: "2.1 MB",
+        timestamp: "13:48 UTC",
+        description: "Photo of punctured scooter tire on shoulder of Highway 99.",
+      },
+    ],
+    ai_recommendation: {
+      verdict: "REQUEST_INFO",
+      confidence: 72,
+      rationale:
+        "Tire photo confirms mechanical breakdown on Highway 99 shoulder. However, customer delivery confirmation signatures for both couriers show disparate dropoff timestamps. Request merchant order pickup receipt to verify sequence.",
+      suggested_redress: [
+        "Request merchant physical receipt for order #7712",
+        "Hold decision pending receipt verification",
+      ],
+    },
+    audit_trail: [
+      {
+        id: "aud-6",
+        timestamp: "5h ago",
+        actor: "Kenji Sato",
+        role: "Courier (CR-6650)",
+        action: "Appeal filed with tire photo.",
+      },
+      {
+        id: "aud-7",
+        timestamp: "1h ago",
+        actor: "Marcus Vance",
+        role: "Lead Analyst",
+        action: "Requested secondary merchant pickup receipts. Status set to Awaiting Rider.",
+      },
+    ],
   },
   {
     id: "APP-398",
     case_id: "CASE-8891",
-    rider_id: "CR-6650",
+    rider_id: "CR-4402",
+    rider_name: "Aria Thorne",
+    rider_phone: "+1 (555) 612-4091",
+    rider_hub: "Airport Corridor",
     reason: "Legitimate dual phone setup for navigation and company courier app.",
-    status: "OVERTURNED",
-    reviewer_note: "Verified secondary handset belongs to spouse on same delivery shift.",
-    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
+    rider_statement:
+      "I use an older iPhone mounted on my handlebars purely for Google Maps turn-by-turn navigation because the screen is bright in sunlight, and my primary Pixel 8 in my pocket runs the courier dispatch app. There was no ghost rider.",
+    status: "RESOLVED",
+    resolution: "APPROVED",
+    reviewer_note: "Verified secondary handset has no courier app installation; bluetooth beacons attest to single operator. Hold released.",
+    sla_deadline: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
+    created_at: new Date(Date.now() - 1000 * 60 * 480).toISOString(),
+    original_decision: {
+      verdict: "ESCROW_HOLD",
+      enforcement_title: "Multi-Handset Beacon Conflict",
+      held_amount: 480.5,
+      enforced_at: new Date(Date.now() - 1000 * 60 * 500).toISOString(),
+      reason_codes: [
+        {
+          code: "DEV-MULTI-03",
+          title: "Dual Bluetooth Beacon Transmit",
+          plain_language: "Two active cellular devices detected within 1 meter proximity throughout transit.",
+          severity: "MEDIUM",
+        },
+      ],
+    },
+    uploaded_evidence: [
+      {
+        id: "ev-7",
+        name: "Scooter_Handlebar_Mount_Setup.jpg",
+        type: "image",
+        size: "3.2 MB",
+        timestamp: "09:30 UTC",
+        description: "Photo showing dedicated GPS nav mount on scooter dashboard.",
+      },
+    ],
+    ai_recommendation: {
+      verdict: "APPROVE",
+      confidence: 96,
+      rationale:
+        "BLE attestation logs confirm secondary device MAC address only communicates with handlebar GPS mount. No secondary login tokens detected.",
+      suggested_redress: [
+        "Release held balance ($480.50)",
+        "Restore courier standing to Elite Tier",
+      ],
+    },
+    audit_trail: [
+      {
+        id: "aud-8",
+        timestamp: "8h ago",
+        actor: "Aria Thorne",
+        role: "Courier (CR-4402)",
+        action: "Appeal filed with handlebar photo.",
+      },
+      {
+        id: "aud-9",
+        timestamp: "4h ago",
+        actor: "Marcus Vance",
+        role: "Lead Analyst",
+        action: "Approved appeal. Payout released ($480.50) and account restored.",
+      },
+    ],
+    redress_applied: {
+      release_payout: true,
+      restore_account: true,
+    },
   },
 ];
 
@@ -928,12 +1272,15 @@ export async function resolveAppeal(
   appealId: string,
   payload: { action: "overturned" | "upheld"; note: string }
 ): Promise<AppealItem> {
+  const status: AppealStatus = "RESOLVED";
+  const resolution = payload.action === "overturned" ? "APPROVED" : "REJECTED";
   if (USE_MOCK) {
     mockAppeals = mockAppeals.map((a) =>
       a.id === appealId
         ? {
             ...a,
-            status: payload.action === "overturned" ? "OVERTURNED" : "UPHELD",
+            status,
+            resolution,
             reviewer_note: payload.note,
           }
         : a
@@ -950,8 +1297,165 @@ export async function resolveAppeal(
       a.id === appealId
         ? {
             ...a,
-            status: payload.action === "overturned" ? "OVERTURNED" : "UPHELD",
+            status,
+            resolution,
             reviewer_note: payload.note,
+          }
+        : a
+    );
+    return mockAppeals.find((a) => a.id === appealId)!;
+  }
+}
+
+export async function approveAppeal(
+  appealId: string,
+  redress: { release_payout: boolean; restore_account: boolean; note?: string },
+  author: string = "Analyst"
+): Promise<AppealItem> {
+  const auditEntry: AppealAuditEntry = {
+    id: `aud-${Date.now()}`,
+    timestamp: "Just now",
+    actor: author,
+    role: "Adjudicator",
+    action: `Approved appeal with redress: ${[
+      redress.release_payout ? "Released Payout" : null,
+      redress.restore_account ? "Restored Account" : null,
+    ]
+      .filter(Boolean)
+      .join(", ")}`,
+    note: redress.note,
+  };
+
+  if (USE_MOCK) {
+    mockAppeals = mockAppeals.map((a) =>
+      a.id === appealId
+        ? {
+            ...a,
+            status: "RESOLVED",
+            resolution: "APPROVED",
+            reviewer_note: redress.note || "Appeal approved and redress applied.",
+            redress_applied: {
+              release_payout: redress.release_payout,
+              restore_account: redress.restore_account,
+            },
+            audit_trail: [auditEntry, ...a.audit_trail],
+          }
+        : a
+    );
+    return mockAppeals.find((a) => a.id === appealId)!;
+  }
+  try {
+    return await apiClient<AppealItem>(`/api/v1/appeals/${appealId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ redress, author }),
+    });
+  } catch {
+    mockAppeals = mockAppeals.map((a) =>
+      a.id === appealId
+        ? {
+            ...a,
+            status: "RESOLVED",
+            resolution: "APPROVED",
+            reviewer_note: redress.note || "Appeal approved and redress applied.",
+            redress_applied: {
+              release_payout: redress.release_payout,
+              restore_account: redress.restore_account,
+            },
+            audit_trail: [auditEntry, ...a.audit_trail],
+          }
+        : a
+    );
+    return mockAppeals.find((a) => a.id === appealId)!;
+  }
+}
+
+export async function rejectAppeal(
+  appealId: string,
+  reason: string,
+  note: string,
+  author: string = "Analyst"
+): Promise<AppealItem> {
+  const auditEntry: AppealAuditEntry = {
+    id: `aud-${Date.now()}`,
+    timestamp: "Just now",
+    actor: author,
+    role: "Adjudicator",
+    action: `Rejected appeal. Reason: ${reason}`,
+    note,
+  };
+
+  if (USE_MOCK) {
+    mockAppeals = mockAppeals.map((a) =>
+      a.id === appealId
+        ? {
+            ...a,
+            status: "RESOLVED",
+            resolution: "REJECTED",
+            reviewer_note: `Reason: ${reason}. Note: ${note}`,
+            audit_trail: [auditEntry, ...a.audit_trail],
+          }
+        : a
+    );
+    return mockAppeals.find((a) => a.id === appealId)!;
+  }
+  try {
+    return await apiClient<AppealItem>(`/api/v1/appeals/${appealId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason, note, author }),
+    });
+  } catch {
+    mockAppeals = mockAppeals.map((a) =>
+      a.id === appealId
+        ? {
+            ...a,
+            status: "RESOLVED",
+            resolution: "REJECTED",
+            reviewer_note: `Reason: ${reason}. Note: ${note}`,
+            audit_trail: [auditEntry, ...a.audit_trail],
+          }
+        : a
+    );
+    return mockAppeals.find((a) => a.id === appealId)!;
+  }
+}
+
+export async function requestMoreInfoForAppeal(
+  appealId: string,
+  infoRequest: string,
+  author: string = "Analyst"
+): Promise<AppealItem> {
+  const auditEntry: AppealAuditEntry = {
+    id: `aud-${Date.now()}`,
+    timestamp: "Just now",
+    actor: author,
+    role: "Adjudicator",
+    action: `Requested additional evidence from rider: "${infoRequest}"`,
+  };
+
+  if (USE_MOCK) {
+    mockAppeals = mockAppeals.map((a) =>
+      a.id === appealId
+        ? {
+            ...a,
+            status: "AWAITING_RIDER",
+            audit_trail: [auditEntry, ...a.audit_trail],
+          }
+        : a
+    );
+    return mockAppeals.find((a) => a.id === appealId)!;
+  }
+  try {
+    return await apiClient<AppealItem>(`/api/v1/appeals/${appealId}/request-info`, {
+      method: "POST",
+      body: JSON.stringify({ infoRequest, author }),
+    });
+  } catch {
+    mockAppeals = mockAppeals.map((a) =>
+      a.id === appealId
+        ? {
+            ...a,
+            status: "AWAITING_RIDER",
+            audit_trail: [auditEntry, ...a.audit_trail],
           }
         : a
     );
