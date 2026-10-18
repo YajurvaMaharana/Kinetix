@@ -98,7 +98,7 @@ const INITIAL_LOG_ENTRIES: ActivityLogEntry[] = [
 ];
 
 export default function DemoControlsPage() {
-  const { role, setRole, canRunDemoControls, isReadOnly, user } = useAuth();
+  const { role, login, canRunDemoControls, isReadOnly, user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -359,7 +359,7 @@ export default function DemoControlsPage() {
   // =========================================================================
   // ACCESS RESTRICTED SCREEN (If not Admin)
   // =========================================================================
-  if (role !== "Admin") {
+  if (role !== "ADMIN") {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -384,7 +384,7 @@ export default function DemoControlsPage() {
               The Demo Control Room grants direct execution authorization to wipe
               the SQLite database, trigger synthetic collusion rings, and modulate
               Kafka pipeline event dispatch velocity. Your current session is authenticated
-              as <strong className="text-[var(--ink)]">{user.name}</strong> ({role}).
+              as <strong className="text-[var(--ink)]">{user?.name || "Guest"}</strong> ({role || "Unauthenticated"}).
             </p>
           </div>
 
@@ -401,13 +401,21 @@ export default function DemoControlsPage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <button
-              onClick={() => {
-                setRole("Admin");
-                showToast({
-                  type: "success",
-                  title: "Role Switched to Admin",
-                  message: "Granted full access to Lab Demo Controls as Elena Rostova.",
-                });
+              onClick={async () => {
+                try {
+                  await login("admin@kinetics.demo", "Admin@123");
+                  showToast({
+                    type: "success",
+                    title: "Authenticated as Admin",
+                    message: "Granted full access to Lab Demo Controls as Elena Rostova.",
+                  });
+                } catch (err: any) {
+                  showToast({
+                    type: "error",
+                    title: "Authentication Failed",
+                    message: err.message || "Failed to switch to Admin.",
+                  });
+                }
               }}
               className="w-full sm:w-auto px-6 py-3 rounded-full bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white font-bold text-sm shadow-plum transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
@@ -467,7 +475,7 @@ export default function DemoControlsPage() {
           <div className="flex items-center gap-1.5 text-slate-400">
             <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
             <span>ROLE:</span>
-            <strong className="text-white">ADMIN ({user.name})</strong>
+            <strong className="text-white">ADMIN ({user?.name || "Elena Rostova"})</strong>
           </div>
           <span className="text-slate-600">|</span>
           <div className="flex items-center gap-1.5 text-slate-400">
