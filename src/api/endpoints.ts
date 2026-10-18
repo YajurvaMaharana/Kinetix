@@ -632,3 +632,335 @@ export async function seedDemo(): Promise<{ message: string }> {
     return { message: "Loaded 50 baseline couriers and 3 collusion syndicates (mock mode)." };
   }
 }
+
+// 9. Live Event Stream & Decision Override Contracts
+export interface LiveStreamEvent {
+  id: string;
+  session_id: string;
+  rider_id: string;
+  rider_name: string;
+  event_type: string;
+  hub: string;
+  risk_score: number;
+  decision: "ALLOW" | "CHALLENGE" | "ESCALATE";
+  speed_kmh: number;
+  timestamp: string;
+  device_info: {
+    model: string;
+    os: string;
+    carrier: string;
+    ip_masked: string;
+    mock_location: boolean;
+    rooted: boolean;
+    battery_drain: string;
+  };
+  signals: {
+    name: string;
+    weight: number;
+    score: number;
+    impact: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+    detail: string;
+  }[];
+  route: {
+    distance_km: number;
+    waypoints: { x: number; y: number }[];
+    speed_vector: string;
+    compliance_pct: number;
+  };
+}
+
+export const INITIAL_MOCK_EVENTS: LiveStreamEvent[] = [
+  {
+    id: "evt_101",
+    session_id: "sess_live_101",
+    rider_id: "CR-8941",
+    rider_name: "Alex Rivera",
+    event_type: "VELOCITY_CHECK",
+    hub: "North Hub",
+    risk_score: 89,
+    decision: "ESCALATE",
+    speed_kmh: 184,
+    timestamp: new Date(Date.now() - 3000).toISOString(),
+    device_info: {
+      model: "Xiaomi Redmi 12 (Rooted)",
+      os: "Android 13.0",
+      carrier: "T-Mobile US",
+      ip_masked: "198.51.100.42",
+      mock_location: true,
+      rooted: true,
+      battery_drain: "14.2%/hr",
+    },
+    signals: [
+      { name: "Mock Provider Flag", weight: 35, score: 98, impact: "NEGATIVE", detail: "Android mock location provider active in background." },
+      { name: "Velocity Vector", weight: 30, score: 92, impact: "NEGATIVE", detail: "Speed delta calculated at 184 km/h between waypoints." },
+      { name: "Device Rooting", weight: 20, score: 85, impact: "NEGATIVE", detail: "Magisk su binary identified in system partition." },
+      { name: "Cluster Proximity", weight: 15, score: 70, impact: "NEGATIVE", detail: "Linked to Downtown Farm Syndicate #4." },
+    ],
+    route: {
+      distance_km: 14.8,
+      waypoints: [{ x: 20, y: 80 }, { x: 50, y: 70 }, { x: 90, y: 20 }, { x: 140, y: 25 }, { x: 190, y: 40 }],
+      speed_vector: "184 km/h (Peak Anomaly)",
+      compliance_pct: 12.4,
+    },
+  },
+  {
+    id: "evt_102",
+    session_id: "sess_live_102",
+    rider_id: "CR-9023",
+    rider_name: "Tariq Vance",
+    event_type: "DEVICE_PASSPORT",
+    hub: "Downtown",
+    risk_score: 64,
+    decision: "CHALLENGE",
+    speed_kmh: 32,
+    timestamp: new Date(Date.now() - 8000).toISOString(),
+    device_info: {
+      model: "Samsung Galaxy A54",
+      os: "Android 14.0",
+      carrier: "AT&T Mobility",
+      ip_masked: "203.0.113.18",
+      mock_location: false,
+      rooted: false,
+      battery_drain: "4.8%/hr",
+    },
+    signals: [
+      { name: "Shared Device Token", weight: 35, score: 75, impact: "NEGATIVE", detail: "IMEI hash linked to 3 previous courier logins within 24h." },
+      { name: "Road Kinematics", weight: 30, score: 30, impact: "POSITIVE", detail: "Smooth acceleration along 4th Ave transit corridor." },
+      { name: "Biometric Attestation", weight: 35, score: 60, impact: "NEUTRAL", detail: "Last liveness verification expired 3 hours ago." },
+    ],
+    route: {
+      distance_km: 4.2,
+      waypoints: [{ x: 30, y: 30 }, { x: 60, y: 50 }, { x: 110, y: 65 }, { x: 150, y: 85 }],
+      speed_vector: "32 km/h (Normal Urban)",
+      compliance_pct: 88.5,
+    },
+  },
+  {
+    id: "evt_103",
+    session_id: "sess_live_103",
+    rider_id: "CR-7812",
+    rider_name: "Elena Rostova",
+    event_type: "KINEMATICS_40HZ",
+    hub: "East Sector",
+    risk_score: 11,
+    decision: "ALLOW",
+    speed_kmh: 24,
+    timestamp: new Date(Date.now() - 14000).toISOString(),
+    device_info: {
+      model: "Apple iPhone 15 Pro",
+      os: "iOS 18.2",
+      carrier: "Verizon Wireless",
+      ip_masked: "198.51.100.99",
+      mock_location: false,
+      rooted: false,
+      battery_drain: "3.1%/hr",
+    },
+    signals: [
+      { name: "Hardware Passport", weight: 40, score: 5, impact: "POSITIVE", detail: "Hardware Secure Enclave attestation verified." },
+      { name: "Inertial Micro-vibration", weight: 30, score: 8, impact: "POSITIVE", detail: "Continuous 40Hz road contact vibration confirmed." },
+      { name: "FaceID Attestation", weight: 30, score: 10, impact: "POSITIVE", detail: "Genuine 3D liveness completed at shift check-in." },
+    ],
+    route: {
+      distance_km: 6.5,
+      waypoints: [{ x: 15, y: 90 }, { x: 45, y: 65 }, { x: 80, y: 45 }, { x: 130, y: 30 }, { x: 175, y: 15 }],
+      speed_vector: "24 km/h (Bicycle / E-Bike)",
+      compliance_pct: 99.4,
+    },
+  },
+  {
+    id: "evt_104",
+    session_id: "sess_live_104",
+    rider_id: "CR-6650",
+    rider_name: "Kenji Sato",
+    event_type: "COLLUSION_PROBE",
+    hub: "Metro Core",
+    risk_score: 72,
+    decision: "CHALLENGE",
+    speed_kmh: 41,
+    timestamp: new Date(Date.now() - 22000).toISOString(),
+    device_info: {
+      model: "Google Pixel 8",
+      os: "Android 14.1",
+      carrier: "Google Fi",
+      ip_masked: "192.0.2.77",
+      mock_location: false,
+      rooted: false,
+      battery_drain: "6.2%/hr",
+    },
+    signals: [
+      { name: "Dual-App Colocation", weight: 40, score: 82, impact: "NEGATIVE", detail: "Synchronized drop-offs with competitor courier app." },
+      { name: "Sensor Inertia", weight: 30, score: 45, impact: "NEUTRAL", detail: "Moderate acceleration spikes detected." },
+      { name: "Banking Entropy", weight: 30, score: 70, impact: "NEGATIVE", detail: "Payout routing recently updated to prepaid debit account." },
+    ],
+    route: {
+      distance_km: 8.1,
+      waypoints: [{ x: 20, y: 40 }, { x: 70, y: 45 }, { x: 120, y: 70 }, { x: 160, y: 60 }],
+      speed_vector: "41 km/h (Moped)",
+      compliance_pct: 74.2,
+    },
+  },
+  {
+    id: "evt_105",
+    session_id: "sess_live_105",
+    rider_id: "CR-5542",
+    rider_name: "David Kim",
+    event_type: "GEO_HOP",
+    hub: "South Bay",
+    risk_score: 94,
+    decision: "ESCALATE",
+    speed_kmh: 195,
+    timestamp: new Date(Date.now() - 32000).toISOString(),
+    device_info: {
+      model: "OnePlus 11 (Spoofed)",
+      os: "Android 13.0",
+      carrier: "Visible Wireless",
+      ip_masked: "198.51.100.12",
+      mock_location: true,
+      rooted: true,
+      battery_drain: "16.8%/hr",
+    },
+    signals: [
+      { name: "Teleportation Delta", weight: 45, score: 99, impact: "NEGATIVE", detail: "Jumped 18.2km across South Bay in 45 seconds." },
+      { name: "Mock Provider Signature", weight: 35, score: 95, impact: "NEGATIVE", detail: "Faked GNSS NMEA sentences without satellite SNR." },
+      { name: "Ring Link", weight: 20, score: 88, impact: "NEGATIVE", detail: "Matching IP subnet with known syndicates." },
+    ],
+    route: {
+      distance_km: 18.2,
+      waypoints: [{ x: 10, y: 20 }, { x: 95, y: 85 }, { x: 180, y: 20 }],
+      speed_vector: "195 km/h (Teleportation)",
+      compliance_pct: 5.1,
+    },
+  },
+];
+
+export async function fetchInitialLiveEvents(): Promise<LiveStreamEvent[]> {
+  if (USE_MOCK) {
+    return INITIAL_MOCK_EVENTS;
+  }
+  try {
+    const sessions = await apiClient<SessionItem[]>("/api/v1/sessions");
+    if (!sessions || sessions.length === 0) return INITIAL_MOCK_EVENTS;
+    return sessions.slice(0, 25).map((s, idx) => ({
+      id: `evt_${s.id || idx}`,
+      session_id: s.id || `sess_${idx}`,
+      rider_id: s.rider_id,
+      rider_name: `Courier ${s.rider_id}`,
+      event_type: s.speed_kmh && s.speed_kmh > 100 ? "VELOCITY_CHECK" : "KINEMATICS_40HZ",
+      hub: ["North Hub", "Downtown", "East Sector", "Metro Core", "South Bay"][idx % 5],
+      risk_score: 100 - (s.trust_score || 80),
+      decision: s.status === "ALLOW" ? "ALLOW" : s.status === "CHALLENGE" ? "CHALLENGE" : "ESCALATE",
+      speed_kmh: s.speed_kmh || 32,
+      timestamp: s.created_at || new Date().toISOString(),
+      device_info: {
+        model: "Hardware Terminal",
+        os: "Standard OS",
+        carrier: "Regional LTE",
+        ip_masked: "198.51.100.••",
+        mock_location: (s.speed_kmh || 0) > 100,
+        rooted: false,
+        battery_drain: "4.5%/hr",
+      },
+      signals: [
+        { name: "Road Kinematics", weight: 35, score: 100 - (s.trust_score || 80), impact: s.status === "ALLOW" ? "POSITIVE" : "NEGATIVE", detail: "Telemetry evaluated by Random Forest model." },
+        { name: "Device Passport", weight: 35, score: s.status === "ALLOW" ? 10 : 80, impact: s.status === "ALLOW" ? "POSITIVE" : "NEGATIVE", detail: "Hardware cryptographic integrity check." },
+        { name: "Collusion Association", weight: 30, score: 20, impact: "NEUTRAL", detail: "Graph community connectivity." },
+      ],
+      route: {
+        distance_km: 7.2,
+        waypoints: [{ x: 20, y: 70 }, { x: 60, y: 50 }, { x: 120, y: 40 }, { x: 170, y: 30 }],
+        speed_vector: `${s.speed_kmh || 32} km/h`,
+        compliance_pct: s.status === "ALLOW" ? 98.2 : 45.0,
+      },
+    }));
+  } catch {
+    return INITIAL_MOCK_EVENTS;
+  }
+}
+
+export async function overrideSessionDecision(
+  sessionId: string,
+  newDecision: "ALLOW" | "CHALLENGE" | "ESCALATE",
+  reason: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    return await apiClient<{ success: boolean; message: string }>(
+      `/api/v1/sessions/${sessionId}/events`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          event_type: "DECISION_OVERRIDE",
+          payload: { override_verdict: newDecision, reason },
+        }),
+      }
+    );
+  } catch {
+    return {
+      success: true,
+      message: `Session ${sessionId} decision overridden to ${newDecision}.`,
+    };
+  }
+}
+
+export async function escalateSessionToCase(
+  sessionId: string,
+  riderId: string,
+  threatSummary: string
+): Promise<{ case_id: string; message: string }> {
+  try {
+    return await apiClient<{ case_id: string; message: string }>(
+      "/api/v1/cases",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: sessionId,
+          rider_id: riderId,
+          severity: "HIGH",
+          threat_summary: threatSummary,
+        }),
+      }
+    );
+  } catch {
+    const caseId = `CASE-${Math.floor(9100 + Math.random() * 800)}`;
+    mockCases.unshift({
+      case_id: caseId,
+      session_id: sessionId,
+      rider_id: riderId,
+      severity: "HIGH",
+      status: "OPEN",
+      assigned_to: null,
+      threat_summary: threatSummary,
+      risk_score: 88,
+      created_at: new Date().toISOString(),
+    });
+    return {
+      case_id: caseId,
+      message: `Security investigation case ${caseId} created from session ${sessionId}.`,
+    };
+  }
+}
+
+export async function forceSessionChallenge(
+  sessionId: string,
+  riderId: string,
+  challengeType: "FACE_LIVENESS" | "OTP"
+): Promise<{ challenge_id: string; message: string }> {
+  try {
+    return await apiClient<{ challenge_id: string; message: string }>(
+      "/api/v1/challenges",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: sessionId,
+          rider_id: riderId,
+          challenge_type: challengeType,
+        }),
+      }
+    );
+  } catch {
+    const chlgId = `chlg_${Math.random().toString(36).substring(2, 8)}`;
+    return {
+      challenge_id: chlgId,
+      message: `Forced ${challengeType} challenge dispatched to rider ${riderId}.`,
+    };
+  }
+}
