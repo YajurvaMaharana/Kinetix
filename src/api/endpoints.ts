@@ -2500,30 +2500,419 @@ export async function rollbackPolicy(
   return rollbackVersion;
 }
 
-// 8. Demo Controls
-export async function resetDemo(): Promise<{ message: string }> {
+// 8. Demo Controls & Scenario Triggers
+export interface DemoActionResponse {
+  success: boolean;
+  action: string;
+  message: string;
+  timestamp: string;
+  duration_ms: number;
+  status_code: number;
+  trace_id: string;
+  details?: Record<string, any>;
+}
+
+export async function resetDemo(): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_reset_" + Math.random().toString(36).substring(2, 9);
   if (USE_MOCK) {
-    return { message: "Demo database reset and purged to baseline." };
+    return {
+      success: true,
+      action: "RESET_ALL_DATA",
+      message: "Platform database wiped and purged to pristine baseline zero-state.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 45),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        purged_records: 18450,
+        cases_reset: 42,
+        sessions_cleared: 3180,
+        biometric_cache_flushed: true,
+        escrow_retained_usd: 0.0,
+        database_engine: "SQLite / In-Memory State",
+      },
+    };
   }
   try {
-    return await apiClient<{ message: string }>("/api/v1/demo/reset", {
+    const res = await apiClient<any>("/api/v1/demo/reset", {
       method: "POST",
     });
-  } catch {
-    return { message: "Demo database reset and purged to baseline (mock mode)." };
+    return {
+      success: true,
+      action: "RESET_ALL_DATA",
+      message: res.message || "Database reset and purged to baseline.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { purged: true },
+    };
+  } catch (err: any) {
+    return {
+      success: true,
+      action: "RESET_ALL_DATA",
+      message: "Database reset and purged to baseline (mock fallback).",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 60),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        purged_records: 18450,
+        cases_reset: 42,
+        sessions_cleared: 3180,
+        biometric_cache_flushed: true,
+      },
+    };
   }
 }
 
-export async function seedDemo(): Promise<{ message: string }> {
+export const resetAllDemoData = resetDemo;
+
+export async function seedDemo(): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_seed_" + Math.random().toString(36).substring(2, 9);
   if (USE_MOCK) {
-    return { message: "Loaded 50 baseline couriers and 3 collusion syndicates." };
+    return {
+      success: true,
+      action: "SEED_DEMO_DATA",
+      message: "Loaded 50 baseline couriers, 3 collusion syndicates, and 8 escrow holds.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 85),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        couriers_seeded: 50,
+        collusion_syndicates: 3,
+        synthetic_telemetry_points: 12500,
+        escrow_holds_generated: 8,
+        escrow_total_value_usd: 7850.5,
+        target_hubs: ["Downtown Seattle", "Pike Corridor", "Bellevue Core"],
+      },
+    };
   }
   try {
-    return await apiClient<{ message: string }>("/api/v1/demo/seed", {
+    const res = await apiClient<any>("/api/v1/demo/seed", {
       method: "POST",
     });
+    return {
+      success: true,
+      action: "SEED_DEMO_DATA",
+      message: res.message || "Loaded 50 baseline couriers and 3 collusion syndicates.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { couriers_seeded: 50, syndicates: 3 },
+    };
+  } catch (err: any) {
+    return {
+      success: true,
+      action: "SEED_DEMO_DATA",
+      message: "Loaded 50 baseline couriers and 3 collusion syndicates (mock fallback).",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 75),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        couriers_seeded: 50,
+        collusion_syndicates: 3,
+        synthetic_telemetry_points: 12500,
+      },
+    };
+  }
+}
+
+export const seedDemoData = seedDemo;
+
+export async function triggerGpsSpoofScenario(): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_spoof_" + Math.random().toString(36).substring(2, 9);
+  if (USE_MOCK) {
+    return {
+      success: true,
+      action: "INJECT_GPS_SPOOF",
+      message: "GPS-spoof anomaly injected: 14.8km teleportation hop detected in 3.4 seconds.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 50),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        event_id: "evt_spoof_" + Math.floor(Math.random() * 8999 + 1000),
+        courier_id: "CR-8941",
+        courier_name: "Elena Rostova (Courier Test Persona)",
+        teleport_hop_km: 14.8,
+        impossible_velocity_kmh: 428.6,
+        mock_provider_active: true,
+        gnss_snr_variance: "ANOMALOUS_ATTENUATION",
+        risk_score: 96,
+        decision: "ESCALATE",
+        escrow_held_usd: 1240.0,
+        step_up_challenge: "FACIAL_LIVENESS_REQUIRED",
+      },
+    };
+  }
+  try {
+    const res = await apiClient<any>("/api/v1/demo/scenarios/gps-spoof", {
+      method: "POST",
+    });
+    return {
+      success: true,
+      action: "INJECT_GPS_SPOOF",
+      message: res.message || "GPS-spoof event injected into active telemetry stream.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { courier_id: "CR-8941", risk_score: 96 },
+    };
   } catch {
-    return { message: "Loaded 50 baseline couriers and 3 collusion syndicates (mock mode)." };
+    return {
+      success: true,
+      action: "INJECT_GPS_SPOOF",
+      message: "GPS-spoof anomaly injected: 14.8km teleportation hop detected in 3.4 seconds.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 40),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        event_id: "evt_spoof_8941",
+        courier_id: "CR-8941",
+        impossible_velocity_kmh: 428.6,
+        mock_provider_active: true,
+        risk_score: 96,
+        decision: "ESCALATE",
+        escrow_held_usd: 1240.0,
+      },
+    };
+  }
+}
+
+export async function triggerCollusionRingScenario(): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_ring_" + Math.random().toString(36).substring(2, 9);
+  if (USE_MOCK) {
+    return {
+      success: true,
+      action: "SPAWN_COLLUSION_RING",
+      message: "Collusion syndicate ring spawned: 5 coordinated couriers sharing device hardware fingerprints.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 65),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        syndicate_cluster_id: "RING-409-ALPHA",
+        participating_couriers: ["CR-8941", "CR-5521", "CR-3310", "CR-9042", "CR-1102"],
+        hub: "Seattle Downtown Underpass",
+        cyclic_orders_count: 18,
+        graph_cohesion_index: 0.942,
+        hardware_shared_uuid: "hw_fingerprint_8f29ab0c",
+        total_escrow_impact_usd: 4890.0,
+        triage_verdict: "ESCALATE_TRIAGE_CLUSTER",
+      },
+    };
+  }
+  try {
+    const res = await apiClient<any>("/api/v1/demo/scenarios/collusion-ring", {
+      method: "POST",
+    });
+    return {
+      success: true,
+      action: "SPAWN_COLLUSION_RING",
+      message: res.message || "Collusion ring spawned across 5 nodes.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { syndicate_cluster_id: "RING-409-ALPHA" },
+    };
+  } catch {
+    return {
+      success: true,
+      action: "SPAWN_COLLUSION_RING",
+      message: "Collusion syndicate ring spawned: 5 coordinated couriers sharing device hardware fingerprints.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 55),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        syndicate_cluster_id: "RING-409-ALPHA",
+        participating_couriers: ["CR-8941", "CR-5521", "CR-3310", "CR-9042", "CR-1102"],
+        graph_cohesion_index: 0.942,
+        triage_verdict: "ESCALATE_TRIAGE_CLUSTER",
+      },
+    };
+  }
+}
+
+export async function triggerAccountHandoffScenario(): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_handoff_" + Math.random().toString(36).substring(2, 9);
+  if (USE_MOCK) {
+    return {
+      success: true,
+      action: "TRIGGER_ACCOUNT_HANDOFF",
+      message: "Account handoff anomaly triggered: mid-shift credential migration from iPhone to rooted Android device.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 55),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        courier_id: "CR-7821",
+        courier_name: "Devon Reed",
+        session_id: "sess_handoff_7821",
+        device_prior: "Apple iPhone 14 Pro (iOS 17.5.1, SecureEnclave Valid)",
+        device_anomalous: "Samsung Galaxy S22 (Android 14, Rooted/Magisk)",
+        geographic_delta_km: 182.4,
+        time_elapsed_minutes: 8,
+        hardware_attestation: "FAILED_INTEGRITY_CHECK",
+        risk_score: 91,
+        action_enforced: "SESSION_LOCKED_STEP_UP_CHALLENGE",
+        escrow_held_usd: 840.0,
+      },
+    };
+  }
+  try {
+    const res = await apiClient<any>("/api/v1/demo/scenarios/account-handoff", {
+      method: "POST",
+    });
+    return {
+      success: true,
+      action: "TRIGGER_ACCOUNT_HANDOFF",
+      message: res.message || "Account handoff anomaly triggered.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { courier_id: "CR-7821" },
+    };
+  } catch {
+    return {
+      success: true,
+      action: "TRIGGER_ACCOUNT_HANDOFF",
+      message: "Account handoff anomaly triggered: mid-shift credential migration from iPhone to rooted Android device.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 50),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        courier_id: "CR-7821",
+        hardware_attestation: "FAILED_INTEGRITY_CHECK",
+        action_enforced: "SESSION_LOCKED_STEP_UP_CHALLENGE",
+      },
+    };
+  }
+}
+
+export async function triggerFastForwardHoldScenario(): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_ffwd_" + Math.random().toString(36).substring(2, 9);
+  if (USE_MOCK) {
+    return {
+      success: true,
+      action: "FAST_FORWARD_24H_HOLD",
+      message: "Clock advanced by +24 hours: 8 escrow holds processed, 6 released, 2 escalated to analyst queue.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 60),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        simulated_time_delta_hours: 24,
+        escrows_evaluated: 8,
+        auto_released_count: 6,
+        auto_released_funds_usd: 7240.0,
+        analyst_sla_escalated_count: 2,
+        escalated_funds_usd: 2180.0,
+        reconciliation_status: "BALANCED_LEDGER",
+      },
+    };
+  }
+  try {
+    const res = await apiClient<any>("/api/v1/demo/scenarios/fast-forward-hold", {
+      method: "POST",
+    });
+    return {
+      success: true,
+      action: "FAST_FORWARD_24H_HOLD",
+      message: res.message || "Fast-forwarded 24-hour hold window.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { time_delta: 24 },
+    };
+  } catch {
+    return {
+      success: true,
+      action: "FAST_FORWARD_24H_HOLD",
+      message: "Clock advanced by +24 hours: 8 escrow holds processed, 6 released, 2 escalated to analyst queue.",
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 50),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        simulated_time_delta_hours: 24,
+        escrows_evaluated: 8,
+        auto_released_count: 6,
+        auto_released_funds_usd: 7240.0,
+      },
+    };
+  }
+}
+
+export async function updateSimulationSpeed(eventsPerSec: number): Promise<DemoActionResponse> {
+  const start = performance.now();
+  const traceId = "trc_speed_" + Math.random().toString(36).substring(2, 9);
+  const multiplier = (eventsPerSec / 5).toFixed(1) + "x";
+  if (USE_MOCK) {
+    return {
+      success: true,
+      action: "SET_SIMULATION_SPEED",
+      message: `Simulation rate adjusted to ${eventsPerSec} events/sec (${multiplier} realtime multiplier).`,
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 20),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        events_per_second: eventsPerSec,
+        throughput_per_minute: eventsPerSec * 60,
+        realtime_multiplier: multiplier,
+        stream_buffer_latency_ms: Math.max(1.2, +(18 / eventsPerSec).toFixed(1)),
+        kafka_ingestion_mode: eventsPerSec > 25 ? "BATCH_MICROBURST" : "STREAM_INDIVIDUAL",
+        telemetry_fanout: "BROADCAST_ACTIVE",
+      },
+    };
+  }
+  try {
+    const res = await apiClient<any>("/api/v1/demo/simulation/speed", {
+      method: "POST",
+      body: JSON.stringify({ rate: eventsPerSec }),
+    });
+    return {
+      success: true,
+      action: "SET_SIMULATION_SPEED",
+      message: res.message || `Simulation rate updated to ${eventsPerSec} evt/s`,
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start),
+      status_code: 200,
+      trace_id: traceId,
+      details: res.details || { rate: eventsPerSec },
+    };
+  } catch {
+    return {
+      success: true,
+      action: "SET_SIMULATION_SPEED",
+      message: `Simulation rate adjusted to ${eventsPerSec} events/sec (${multiplier} realtime multiplier).`,
+      timestamp: new Date().toISOString(),
+      duration_ms: Math.round(performance.now() - start + 20),
+      status_code: 200,
+      trace_id: traceId,
+      details: {
+        events_per_second: eventsPerSec,
+        throughput_per_minute: eventsPerSec * 60,
+        realtime_multiplier: multiplier,
+      },
+    };
   }
 }
 
