@@ -53,6 +53,20 @@ export default function App() {
               <Route path="/lab/demo" element={<DemoControlsPage />} />
               <Route path="/lab/evaluation" element={<EvaluationPage />} />
               <Route path="/rider-view" element={<RiderViewPage />} />
+              {/* Top-level section aliases & deep links */}
+              <Route path="/monitor" element={<Navigate to="/monitor/live" replace />} />
+              <Route path="/graph" element={<Navigate to="/monitor/graph" replace />} />
+              <Route path="/cases" element={<Navigate to="/cases/investigations" replace />} />
+              <Route path="/appeals" element={<Navigate to="/cases/appeals" replace />} />
+              <Route path="/money" element={<Navigate to="/money/payouts" replace />} />
+              <Route path="/payouts" element={<Navigate to="/money/payouts" replace />} />
+              <Route path="/policies" element={<Navigate to="/money/policies" replace />} />
+              <Route path="/policy" element={<Navigate to="/money/policies" replace />} />
+              <Route path="/lab" element={<Navigate to="/lab/simulator" replace />} />
+              <Route path="/simulator" element={<Navigate to="/lab/simulator" replace />} />
+              <Route path="/demo" element={<Navigate to="/lab/demo" replace />} />
+              <Route path="/evaluation" element={<Navigate to="/lab/evaluation" replace />} />
+              <Route path="/rider/explain" element={<Navigate to="/rider-view" replace />} />
             </Route>
 
             {/* Fallback to Overview */}

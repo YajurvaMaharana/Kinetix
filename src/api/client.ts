@@ -5,10 +5,10 @@
  */
 
 export const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8000";
+  (import.meta as any).env?.VITE_API_BASE_URL || "";
 
 export const USE_MOCK =
-  (import.meta as any).env?.VITE_USE_MOCK === "true";
+  (import.meta as any).env?.VITE_USE_MOCK !== "false";
 
 export interface ApiError {
   status: number;
@@ -116,6 +116,9 @@ export async function apiClient<T>(
  * Quick health-check probe for the navbar status indicator
  */
 export async function checkBackendHealth(): Promise<{ online: boolean; statusText: string }> {
+  if (USE_MOCK || !API_BASE_URL) {
+    return { online: true, statusText: "Engine v2.4 (Active)" };
+  }
   try {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), 2000);
@@ -130,7 +133,7 @@ export async function checkBackendHealth(): Promise<{ online: boolean; statusTex
     );
     clearTimeout(id);
     if (res && res.ok) {
-      return { online: true, statusText: "API :8000 online" };
+      return { online: true, statusText: "API Online" };
     }
     return { online: false, statusText: "offline" };
   } catch {

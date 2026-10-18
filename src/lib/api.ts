@@ -20,7 +20,7 @@ import {
   RetentionPurgeResponse,
 } from "./types";
 
-const API_BASE = (typeof window !== "undefined" && (window as any).ENV_API_URL) || "http://localhost:8000/api/v1";
+const API_BASE = (typeof window !== "undefined" && (window as any).ENV_API_URL) || (import.meta as any).env?.VITE_API_BASE_URL || "";
 
 const ROLE_STORAGE_KEY = "trustjuggler_active_role";
 
@@ -165,27 +165,29 @@ export async function apiFetch<T>(
   const { role, headers, ...rest } = options;
   const activeRole = role || getActiveRole();
 
-  try {
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    const url = `${API_BASE}${normalizedPath}`;
-    const defaultHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-      "X-Role": activeRole,
-    };
+  if (API_BASE) {
+    try {
+      const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+      const url = `${API_BASE}${normalizedPath}`;
+      const defaultHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Role": activeRole,
+      };
 
-    const response = await fetch(url, {
-      ...rest,
-      headers: {
-        ...defaultHeaders,
-        ...(headers as Record<string, string>),
-      },
-    });
+      const response = await fetch(url, {
+        ...rest,
+        headers: {
+          ...defaultHeaders,
+          ...(headers as Record<string, string>),
+        },
+      });
 
-    if (response.ok) {
-      return response.json() as Promise<T>;
+      if (response.ok) {
+        return response.json() as Promise<T>;
+      }
+    } catch {
+      // Backend offline; fallback to mock implementation below
     }
-  } catch {
-    // Backend offline; fallback to mock implementation below
   }
 
   // Fallback Mock Routing

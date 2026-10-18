@@ -60,137 +60,29 @@ export interface AssessmentResponse {
   evaluated_at: string;
 }
 
-export type CaseStatus = "OPEN" | "IN_REVIEW" | "ESCALATED" | "CLOSED" | "RESOLVED_LEGIT" | "RESTRICTED";
-
-export interface CaseSignalEvidence {
-  name: string;
-  score: number;
-  weight: number;
-  severity: "HIGH" | "MEDIUM" | "LOW";
-  description: string;
-}
-
-export interface CaseLinkedRider {
-  rider_id: string;
-  name: string;
-  relationship: string;
-  risk: number;
-}
-
-export interface CaseLinkedDevice {
-  device_id: string;
-  model: string;
-  imei: string;
-  os: string;
-  root: boolean;
-}
-
-export interface CaseTimelineItem {
-  id: string;
-  timestamp: string;
-  event: string;
-  type: "alert" | "challenge" | "action" | "system";
-  actor?: string;
-}
-
-export interface CaseNote {
-  id: string;
-  author: string;
-  role: string;
-  timestamp: string;
-  content: string;
-}
-
 export interface CaseItem {
   case_id: string;
   session_id: string;
   rider_id: string;
   rider_name?: string;
-  hub?: string;
-  title?: string;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  status: CaseStatus;
-  outcome?: "fraud_confirmed" | "false_positive";
+  status: "OPEN" | "IN_REVIEW" | "RESOLVED_LEGIT" | "RESTRICTED";
   assigned_to: string | null;
   threat_summary: string;
   risk_score: number;
   created_at: string;
   updated_at?: string;
-  payout_held?: number;
-  payout_frozen?: boolean;
-  liveness_status?: "NOT_REQUESTED" | "PENDING" | "PASSED" | "FAILED";
-  signals?: CaseSignalEvidence[];
-  linked_riders?: CaseLinkedRider[];
-  linked_devices?: CaseLinkedDevice[];
-  timeline?: CaseTimelineItem[];
-  notes?: CaseNote[];
-}
-
-export type AppealStatus = "NEW" | "IN_REVIEW" | "AWAITING_RIDER" | "RESOLVED";
-
-export interface AppealReasonCode {
-  code: string;
-  title: string;
-  plain_language: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
-}
-
-export interface AppealEvidence {
-  id: string;
-  name: string;
-  type: "video" | "image" | "pdf" | "log";
-  size: string;
-  timestamp: string;
-  description: string;
-}
-
-export interface AppealAIRecommendation {
-  verdict: "APPROVE" | "REJECT" | "REQUEST_INFO";
-  confidence: number;
-  rationale: string;
-  suggested_redress: string[];
-}
-
-export interface AppealAuditEntry {
-  id: string;
-  timestamp: string;
-  actor: string;
-  role: string;
-  action: string;
-  note?: string;
-}
-
-export interface AppealOriginalDecision {
-  verdict: string;
-  enforcement_title: string;
-  held_amount: number;
-  enforced_at: string;
-  reason_codes: AppealReasonCode[];
 }
 
 export interface AppealItem {
   id: string;
   case_id?: string;
-  rider_id: string;
-  rider_name: string;
-  rider_phone?: string;
-  rider_hub?: string;
+  rider_id?: string;
   reason: string;
-  rider_statement: string;
   supporting_text?: string;
-  status: AppealStatus;
-  resolution?: "APPROVED" | "REJECTED";
+  status: "PENDING" | "OVERTURNED" | "UPHELD";
   reviewer_note?: string;
-  sla_deadline: string; // ISO string
   created_at: string;
-  original_decision: AppealOriginalDecision;
-  uploaded_evidence: AppealEvidence[];
-  ai_recommendation: AppealAIRecommendation;
-  audit_trail: AppealAuditEntry[];
-  redress_applied?: {
-    release_payout: boolean;
-    restore_account: boolean;
-  };
 }
 
 export interface PayoutItem {
@@ -220,6 +112,62 @@ export interface PolicyThresholds {
   block_threshold: number;
 }
 
+export interface PolicyRuleConfig {
+  challenge_threshold: number;
+  escalate_threshold: number;
+  allow_threshold?: number;
+  max_velocity_kmh: number;
+  min_face_match: number;
+  hold_window_hours: number;
+  rules: {
+    velocity_rule_active: boolean;
+    face_match_rule_active: boolean;
+    hold_window_active: boolean;
+    emulator_block_active: boolean;
+    device_collision_active: boolean;
+  };
+}
+
+export interface PolicyVersion {
+  id: string;
+  version_tag: string;
+  name: string;
+  config: PolicyRuleConfig;
+  status: "ACTIVE" | "DRAFT" | "ARCHIVED";
+  created_at: string;
+  deployed_at?: string;
+  deployed_by?: string;
+  notes?: string;
+}
+
+export interface PolicySimulationMetrics {
+  allow_pct: number;
+  challenge_pct: number;
+  escalate_pct: number;
+  estimated_false_positives: number;
+  payouts_affected: number;
+  payouts_affected_amount: number;
+  estimated_fraud_caught_pct: number;
+  sessions_evaluated: number;
+}
+
+export interface PolicySimulationComparison {
+  policy_id: string;
+  current: PolicySimulationMetrics;
+  proposed: PolicySimulationMetrics;
+  diff: {
+    allow_delta_pct: number;
+    challenge_delta_pct: number;
+    escalate_delta_pct: number;
+    false_positives_delta: number;
+    payouts_affected_delta: number;
+    payouts_affected_amount_delta: number;
+    fraud_caught_delta_pct: number;
+  };
+  sessions_evaluated: number;
+  generated_at: string;
+}
+
 export interface PolicySimResult {
   policy_id: string;
   sessions_evaluated: number;
@@ -238,274 +186,36 @@ let mockCases: CaseItem[] = [
     session_id: "sess_spoof_9004",
     rider_id: "CR-8941",
     rider_name: "Alex Rivera",
-    hub: "Downtown",
-    title: "GPS Mock Provider Delta: 184 km/h jump",
     severity: "HIGH",
     status: "OPEN",
     assigned_to: "marcus_vance",
-    threat_summary: "GPS Mock Provider Delta: 184 km/h jump during active delivery along 4th Ave.",
+    threat_summary: "GPS Mock Provider Delta: 184 km/h jump during active delivery.",
     risk_score: 89,
     created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    payout_held: 1240.0,
-    payout_frozen: true,
-    liveness_status: "FAILED",
-    signals: [
-      { name: "Mock Provider Flag", score: 98, weight: 0.35, severity: "HIGH", description: "Android LocationManager.isFromMockProvider returned TRUE during dropoff." },
-      { name: "Kinematic Impossibility", score: 92, weight: 0.30, severity: "HIGH", description: "Calculated traversal velocity 184.2 km/h across 800m grid." },
-      { name: "Accelerometer Divergence", score: 81, weight: 0.20, severity: "MEDIUM", description: "Zero vehicular vibration detected while coordinates shifted 1.4km." },
-      { name: "Root & Hooking Integrity", score: 76, weight: 0.15, severity: "MEDIUM", description: "Substrate hooking framework detected in system runtime." },
-    ],
-    linked_riders: [
-      { rider_id: "CR-9023", name: "Tariq Vance", relationship: "Shared hardware token IMEI-e3b0", risk: 84 },
-      { rider_id: "CR-5542", name: "David Kim", relationship: "Linked Chase Checking •••• 9921", risk: 94 },
-    ],
-    linked_devices: [
-      { device_id: "DEV-IMEI-e3b0", model: "Xiaomi Redmi 12 (Rooted)", imei: "864192040182941", os: "Android 13 (Magisk)", root: true },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "18m ago", event: "Sensor stream flagged abnormal kinematic acceleration (184 km/h)", type: "alert" },
-      { id: "tl-2", timestamp: "17m ago", event: "Automated Challenge dispatched: Active 3D Face Liveness required", type: "challenge" },
-      { id: "tl-3", timestamp: "12m ago", event: "Challenge failed: Courier aborted camera verification within 300s window", type: "challenge" },
-      { id: "tl-4", timestamp: "10m ago", event: "Auto-hold triggered: Payout $1,240.00 frozen in risk escrow", type: "action" },
-      { id: "tl-5", timestamp: "8m ago", event: "Case auto-generated and assigned to Marcus Vance (Lead Analyst)", type: "system", actor: "Risk Engine" },
-    ],
-    notes: [
-      { id: "n-1", author: "Marcus Vance", role: "Lead Analyst", timestamp: "6m ago", content: "Reviewing telemetry logs. Courier appears to be using a location spoofing joystick app while parked at 2nd & Pike." },
-    ],
   },
   {
     case_id: "CASE-9005",
     session_id: "sess_ring_9005",
     rider_id: "CR-9023",
     rider_name: "Tariq Vance",
-    hub: "Downtown",
-    title: "Collusion Cluster #C-902: 4 riders on single IMEI",
     severity: "CRITICAL",
     status: "IN_REVIEW",
     assigned_to: "elena_rostova",
-    threat_summary: "Collusion Cluster #C-902: 4 couriers linked to single IMEI hardware key and common bank route.",
+    threat_summary: "Collusion Cluster #C-902: 4 riders linked to single IMEI hardware key.",
     risk_score: 94,
     created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    payout_held: 840.5,
-    payout_frozen: true,
-    liveness_status: "PENDING",
-    signals: [
-      { name: "Hardware Key Collision", score: 99, weight: 0.40, severity: "HIGH", description: "Cryptographic hardware attestation collision with 3 active fleet accounts." },
-      { name: "Simultaneous Session Auth", score: 95, weight: 0.30, severity: "HIGH", description: "3 distinct courier orders checked in within 90 seconds from 1 IP." },
-      { name: "Bank Route Overlap", score: 88, weight: 0.30, severity: "HIGH", description: "JPMorgan Chase routing •••• 9921 shared across accounts." },
-    ],
-    linked_riders: [
-      { rider_id: "CR-8941", name: "Alex Rivera", relationship: "Syndicate member #C-902", risk: 89 },
-      { rider_id: "CR-5542", name: "David Kim", relationship: "Shared payout escrow account", risk: 94 },
-    ],
-    linked_devices: [
-      { device_id: "DEV-IMEI-e3b0", model: "Xiaomi Redmi 12 (Rooted)", imei: "864192040182941", os: "Android 13 (Magisk)", root: true },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "45m ago", event: "Graph engine detected cluster #C-902 threshold breach (density 0.94)", type: "alert" },
-      { id: "tl-2", timestamp: "35m ago", event: "Payout held: $840.50 marked under Syndicate Review", type: "action" },
-      { id: "tl-3", timestamp: "20m ago", event: "Analyst Elena Rostova claimed case for device farm investigation", type: "system", actor: "Elena Rostova" },
-    ],
-    notes: [
-      { id: "n-1", author: "Elena Rostova", role: "Fraud Analyst", timestamp: "15m ago", content: "Subpoenaed carrier logs confirm single base transceiver station cell for all 3 devices simultaneously." },
-    ],
-  },
-  {
-    case_id: "CASE-9007",
-    session_id: "sess_hash_9007",
-    rider_id: "CR-3319",
-    rider_name: "Carlos Mendez",
-    hub: "North Hub",
-    title: "Device Fingerprint Hash Collision across 3 shifts",
-    severity: "HIGH",
-    status: "OPEN",
-    assigned_to: null,
-    threat_summary: "Device Fingerprint Hash Collision across 3 shifts on alternating morning routes.",
-    risk_score: 82,
-    created_at: new Date(Date.now() - 1000 * 60 * 75).toISOString(),
-    payout_held: 390.0,
-    payout_frozen: false,
-    liveness_status: "NOT_REQUESTED",
-    signals: [
-      { name: "Canvas/WebGL Fingerprint", score: 89, weight: 0.40, severity: "HIGH", description: "100% hash equivalence with banned account CR-1092." },
-      { name: "SIM IMSI Churn", score: 79, weight: 0.35, severity: "MEDIUM", description: "3 different prepaid SIM cards inserted over 48 hours." },
-    ],
-    linked_riders: [
-      { rider_id: "CR-1092", name: "Marcus Brody (Banned)", relationship: "Prior account device holder", risk: 96 },
-    ],
-    linked_devices: [
-      { device_id: "DEV-MOTO-91", model: "Motorola Moto G Power", imei: "359182049102918", os: "Android 12", root: false },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "1h ago", event: "Canvas hash match triggered high-risk alert", type: "alert" },
-    ],
-    notes: [],
-  },
-  {
-    case_id: "CASE-9008",
-    session_id: "sess_hop_9008",
-    rider_id: "CR-7104",
-    rider_name: "Siddharth Nair",
-    hub: "Airport Corridor",
-    title: "Velocity Hop & Spatio-temporal Teleportation",
-    severity: "MEDIUM",
-    status: "IN_REVIEW",
-    assigned_to: "marcus_vance",
-    threat_summary: "Instantaneous 12km position jump between Airport Cargo Terminal and West Seattle.",
-    risk_score: 74,
-    created_at: new Date(Date.now() - 1000 * 60 * 110).toISOString(),
-    payout_held: 512.0,
-    payout_frozen: true,
-    liveness_status: "PENDING",
-    signals: [
-      { name: "Cell Tower vs GPS Drift", score: 84, weight: 0.50, severity: "HIGH", description: "Cell tower triangulation indicates South Seattle while GPS reports West Seattle." },
-      { name: "Order Acceptance Speed", score: 72, weight: 0.50, severity: "MEDIUM", description: "Batch accepted within 220ms of broadcast." },
-    ],
-    linked_riders: [],
-    linked_devices: [
-      { device_id: "DEV-PIXEL-7A", model: "Google Pixel 7a", imei: "354091829012391", os: "Android 14", root: false },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "2h ago", event: "Position teleportation spike detected", type: "alert" },
-      { id: "tl-2", timestamp: "1h ago", event: "Payout held: $512.00 subject to route audit", type: "action" },
-    ],
-    notes: [
-      { id: "n-1", author: "Marcus Vance", role: "Lead Analyst", timestamp: "40m ago", content: "Evaluating airport tunnel signal blackout vs intentional GPS coordinate inject." },
-    ],
-  },
-  {
-    case_id: "CASE-9009",
-    session_id: "sess_escrow_9009",
-    rider_id: "CR-5542",
-    rider_name: "David Kim",
-    hub: "South Bay",
-    title: "Multi-courier Chase Escrow Syndicate Node",
-    severity: "CRITICAL",
-    status: "ESCALATED",
-    assigned_to: "elena_rostova",
-    threat_summary: "Multi-courier Chase Escrow Syndicate Node: beneficiary routing linked to 6 active fraud cases.",
-    risk_score: 97,
-    created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    payout_held: 3420.0,
-    payout_frozen: true,
-    liveness_status: "FAILED",
-    signals: [
-      { name: "Syndicate Money Mule Vector", score: 99, weight: 0.50, severity: "HIGH", description: "Bank account linked to $14,200 in aggregate dispute flags." },
-      { name: "Biometric Injection Attempt", score: 96, weight: 0.50, severity: "HIGH", description: "Virtual camera driver intercepted during liveness challenge." },
-    ],
-    linked_riders: [
-      { rider_id: "CR-8941", name: "Alex Rivera", relationship: "Shared payout account", risk: 89 },
-      { rider_id: "CR-9023", name: "Tariq Vance", relationship: "Shared payout account", risk: 94 },
-    ],
-    linked_devices: [
-      { device_id: "DEV-ONEPLUS-11", model: "OnePlus 11", imei: "869102930192841", os: "OxygenOS 14 (Rooted)", root: true },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "3h ago", event: "Escalated by Chief Auditor to Legal & Compliance", type: "system" },
-      { id: "tl-2", timestamp: "2h ago", event: "Freeze placed on total fleet balance ($3,420.00)", type: "action" },
-    ],
-    notes: [
-      { id: "n-1", author: "Elena Rostova", role: "Fraud Analyst", timestamp: "1h ago", content: "Coordinating with banking compliance partner regarding shared Chase account." },
-    ],
-  },
-  {
-    case_id: "CASE-9010",
-    session_id: "sess_colo_9010",
-    rider_id: "CR-6650",
-    rider_name: "Kenji Sato",
-    hub: "Metro Core",
-    title: "Dual-App Colocation Probe along Highway 99",
-    severity: "HIGH",
-    status: "ESCALATED",
-    assigned_to: "marcus_vance",
-    threat_summary: "Dual-App Colocation Probe: Two riders moving synchronously within 2 meters for 45 minutes.",
-    risk_score: 86,
-    created_at: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-    payout_held: 710.0,
-    payout_frozen: true,
-    liveness_status: "PENDING",
-    signals: [
-      { name: "Trajectory Overlap 98.4%", score: 94, weight: 0.60, severity: "HIGH", description: "Identical speed, heading, and stop duration with CR-4402." },
-      { name: "Ghost Rider Indicator", score: 81, weight: 0.40, severity: "MEDIUM", description: "One physical vehicle carrying two dispatch phones." },
-    ],
-    linked_riders: [
-      { rider_id: "CR-4402", name: "Aria Thorne", relationship: "Co-located delivery partner", risk: 68 },
-    ],
-    linked_devices: [
-      { device_id: "DEV-PIXEL-8", model: "Google Pixel 8", imei: "354182049102941", os: "Android 14", root: false },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "4h ago", event: "Colocation engine flagged tandem trajectory", type: "alert" },
-      { id: "tl-2", timestamp: "3h ago", event: "Case escalated to Senior Analyst Queue", type: "system" },
-    ],
-    notes: [],
   },
   {
     case_id: "CASE-9006",
     session_id: "sess_legit_9006",
     rider_id: "CR-7812",
     rider_name: "Elena Rostova",
-    hub: "East Sector",
-    title: "Routine route drift cleared by 3D liveness attestation",
     severity: "LOW",
-    status: "CLOSED",
-    outcome: "false_positive",
+    status: "RESOLVED_LEGIT",
     assigned_to: "marcus_vance",
-    threat_summary: "Routine route drift cleared by 3D liveness biometric attestation. Genuine traffic detour.",
+    threat_summary: "Routine route drift cleared by 3D liveness biometric attestation.",
     risk_score: 11,
-    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
-    payout_held: 0.0,
-    payout_frozen: false,
-    liveness_status: "PASSED",
-    signals: [
-      { name: "3D Liveness Attestation", score: 3, weight: 0.70, severity: "LOW", description: "Passed biometric face challenge with 99.8% confidence." },
-      { name: "Secure Enclave Hardware", score: 5, weight: 0.30, severity: "LOW", description: "Apple Secure Enclave hardware key validated." },
-    ],
-    linked_riders: [],
-    linked_devices: [
-      { device_id: "DEV-IPHONE-15", model: "Apple iPhone 15 Pro", imei: "354910284910291", os: "iOS 18.2", root: false },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "6h ago", event: "Route drift flagged during road construction detour", type: "alert" },
-      { id: "tl-2", timestamp: "5h ago", event: "Biometric challenge completed successfully by courier", type: "challenge" },
-      { id: "tl-3", timestamp: "4h ago", event: "Case closed as False Positive (Legitimate Courier)", type: "action", actor: "Marcus Vance" },
-    ],
-    notes: [
-      { id: "n-1", author: "Marcus Vance", role: "Lead Analyst", timestamp: "4h ago", content: "Detour was due to Alaskan Way Viaduct construction. Liveness check passed effortlessly. Hold released." },
-    ],
-  },
-  {
-    case_id: "CASE-9002",
-    session_id: "sess_root_9002",
-    rider_id: "CR-1904",
-    rider_name: "Vikram Patel",
-    hub: "South Bay",
-    title: "Magisk Root Device Farm & GPS Joystick Emulation",
-    severity: "CRITICAL",
-    status: "CLOSED",
-    outcome: "fraud_confirmed",
-    assigned_to: "elena_rostova",
-    threat_summary: "Confirmed GPS joystick emulation and fake order farming. Permanent account restriction.",
-    risk_score: 98,
-    created_at: new Date(Date.now() - 1000 * 60 * 720).toISOString(),
-    payout_held: 2150.0,
-    payout_frozen: true,
-    liveness_status: "FAILED",
-    signals: [
-      { name: "Root Exploit Intercept", score: 99, weight: 0.50, severity: "HIGH", description: "Kernel-level Magisk bypass detected." },
-      { name: "Synthetic Order Generation", score: 98, weight: 0.50, severity: "HIGH", description: "12 consecutive deliveries accepted with zero physical transit." },
-    ],
-    linked_riders: [],
-    linked_devices: [
-      { device_id: "DEV-ROOT-XIAOMI", model: "Xiaomi Poco F4", imei: "869102938192019", os: "Android 13", root: true },
-    ],
-    timeline: [
-      { id: "tl-1", timestamp: "12h ago", event: "System identified synthetic order acceptance pattern", type: "alert" },
-      { id: "tl-2", timestamp: "10h ago", event: "Fraud confirmed: Account permanently suspended and payout forfeited", type: "action", actor: "Elena Rostova" },
-    ],
-    notes: [
-      { id: "n-1", author: "Elena Rostova", role: "Fraud Analyst", timestamp: "10h ago", content: "Vendor confirmed merchant orders were generated by automated script. Permanent ban enforced." },
-    ],
+    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
   },
 ];
 
@@ -514,307 +224,19 @@ let mockAppeals: AppealItem[] = [
     id: "APP-401",
     case_id: "CASE-9004",
     rider_id: "CR-8941",
-    rider_name: "Alex Rivera",
-    rider_phone: "+1 (555) 234-8901",
-    rider_hub: "Downtown",
-    reason: "False positive velocity jump caused by tunnel GPS multipath reflection.",
-    rider_statement:
-      "I was delivering Order #8921 through the SR-99 underground tunnel during rush hour. When I entered the tunnel, my navigation lost satellite lock and drifted erratically. When I exited at Seneca St, the app calculated an impossible speed of 184 km/h because it re-acquired coordinates instantly. I was driving a standard Honda Civic at 35 mph the whole time. Please check my dashcam video and toll transponder timestamp.",
-    status: "NEW",
-    sla_deadline: new Date(Date.now() + 1000 * 60 * 48).toISOString(), // 48m left
-    created_at: new Date(Date.now() - 1000 * 60 * 72).toISOString(),
-    original_decision: {
-      verdict: "ESCALATE_AND_HOLD",
-      enforcement_title: "Velocity Spoofing & Automated Payout Hold",
-      held_amount: 1240.0,
-      enforced_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-      reason_codes: [
-        {
-          code: "GEO-VEL-99",
-          title: "Kinematic Teleportation Anomaly",
-          plain_language: "Coordinates shifted 1.8km in 35 seconds, exceeding normal roadway acceleration limits.",
-          severity: "HIGH",
-        },
-        {
-          code: "LIV-TIMEOUT-04",
-          title: "Biometric Challenge Expired",
-          plain_language: "3D camera selfie prompt was not completed within the mandatory 5-minute safety window.",
-          severity: "MEDIUM",
-        },
-      ],
-    },
-    uploaded_evidence: [
-      {
-        id: "ev-1",
-        name: "SR99_Tunnel_Dashcam_1418UTC.mp4",
-        type: "video",
-        size: "42.8 MB",
-        timestamp: "14:18 UTC",
-        description: "Front dashcam video showing steady 35 mph traffic flow inside tunnel.",
-      },
-      {
-        id: "ev-2",
-        name: "GoodToGo_Toll_Receipt_Nov17.pdf",
-        type: "pdf",
-        size: "245 KB",
-        timestamp: "14:19 UTC",
-        description: "Electronic toll transponder pass record confirming vehicle entry at 14:16 and exit at 14:21.",
-      },
-      {
-        id: "ev-3",
-        name: "Garmin_GPX_Telemetry_Log.log",
-        type: "log",
-        size: "1.2 MB",
-        timestamp: "14:22 UTC",
-        description: "Independent hardware GPS track confirming zero velocity spikes.",
-      },
-    ],
-    ai_recommendation: {
-      verdict: "APPROVE",
-      confidence: 94,
-      rationale:
-        "Dashcam optical flow and electronic toll gantry timestamps conclusively corroborate tunnel entry. GPS coordinate jump matches canonical urban canyon multipath reflection at tunnel portal. Zero indicators of software hooking or Magisk root.",
-      suggested_redress: [
-        "Release held payout ($1,240.00) immediately to courier bank account",
-        "Restore courier trust score from 42% back to 91%",
-        "Whitelist SR-99 tunnel transit corridor for future automated geofence filtering",
-      ],
-    },
-    audit_trail: [
-      {
-        id: "aud-1",
-        timestamp: "90m ago",
-        actor: "Risk Engine",
-        role: "Automated System",
-        action: "Case CASE-9004 generated and payout held ($1,240.00).",
-      },
-      {
-        id: "aud-2",
-        timestamp: "72m ago",
-        actor: "Alex Rivera",
-        role: "Courier (CR-8941)",
-        action: "Submitted formal appeal with 3 evidence attachments.",
-      },
-      {
-        id: "aud-3",
-        timestamp: "70m ago",
-        actor: "SchemeSetu / AI Copilot",
-        role: "Evidence Analyzer",
-        action: "Ingested dashcam video and toll pass. Confidence scored at 94% APPROVE.",
-      },
-    ],
-  },
-  {
-    id: "APP-402",
-    case_id: "CASE-9005",
-    rider_id: "CR-9023",
-    rider_name: "Tariq Vance",
-    rider_phone: "+1 (555) 782-9914",
-    rider_hub: "Downtown",
-    reason: "Legitimate device sharing with courier brother on alternating shifts.",
-    rider_statement:
-      "My brother and I share one phone to save money on cell service. When my shift ends at 2 PM, he logs in with his account and starts his shift. We are not a device farm. We live in the same apartment and use the same WiFi network.",
-    status: "IN_REVIEW",
-    sla_deadline: new Date(Date.now() + 1000 * 60 * 135).toISOString(), // 2h 15m left
-    created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    original_decision: {
-      verdict: "SUSPEND_AND_ESCROW",
-      enforcement_title: "Device Farm Syndicate & Payout Escrow Hold",
-      held_amount: 840.5,
-      enforced_at: new Date(Date.now() - 1000 * 60 * 200).toISOString(),
-      reason_codes: [
-        {
-          code: "HW-CLUSTER-902",
-          title: "Hardware Fingerprint Collision",
-          plain_language: "Same IMEI and Magisk root signature active across 4 distinct courier profiles simultaneously.",
-          severity: "HIGH",
-        },
-        {
-          code: "BNK-ROUT-44",
-          title: "Shared Bank Routing Conflict",
-          plain_language: "Beneficiary bank account is shared with 3 other flagged couriers.",
-          severity: "HIGH",
-        },
-      ],
-    },
-    uploaded_evidence: [
-      {
-        id: "ev-4",
-        name: "Apartment_Lease_Agreement.pdf",
-        type: "pdf",
-        size: "3.4 MB",
-        timestamp: "11:20 UTC",
-        description: "Residential lease showing shared co-tenancy.",
-      },
-      {
-        id: "ev-5",
-        name: "T-Mobile_Family_Plan_Bill.pdf",
-        type: "pdf",
-        size: "520 KB",
-        timestamp: "11:22 UTC",
-        description: "Family phone plan statement.",
-      },
-    ],
-    ai_recommendation: {
-      verdict: "REJECT",
-      confidence: 88,
-      rationale:
-        "Telemetric telemetry indicates simultaneous concurrent order dispatches occurring within 90 seconds from 3 distinct locations on the same IMEI. Physical device sharing on alternating shifts does not explain concurrent deliveries. Bank account routing matches syndicate #C-902.",
-      suggested_redress: [
-        "Maintain account suspension",
-        "Request secondary bank identity attestation",
-      ],
-    },
-    audit_trail: [
-      {
-        id: "aud-4",
-        timestamp: "3h ago",
-        actor: "Tariq Vance",
-        role: "Courier (CR-9023)",
-        action: "Appeal filed claiming family device sharing.",
-      },
-      {
-        id: "aud-5",
-        timestamp: "2h ago",
-        actor: "Elena Rostova",
-        role: "Senior Fraud Analyst",
-        action: "Claimed appeal for active investigation. Subpoenaed carrier logs.",
-      },
-    ],
-  },
-  {
-    id: "APP-403",
-    case_id: "CASE-9010",
-    rider_id: "CR-6650",
-    rider_name: "Kenji Sato",
-    rider_phone: "+1 (555) 302-8812",
-    rider_hub: "Metro Core",
-    reason: "Co-riding with colleague due to scooter tire puncture.",
-    rider_statement:
-      "My scooter had a rear tire puncture on Highway 99 at 13:45. My fellow courier Aria Thorne stopped and gave me a ride with my thermal bag so my customer's soup wouldn't get cold. We were traveling together for emergency safety, not running a ghost rider scheme.",
-    status: "AWAITING_RIDER",
-    sla_deadline: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(), // 18h left
-    created_at: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
-    original_decision: {
-      verdict: "CHALLENGE_FLAG",
-      enforcement_title: "Dual-App Colocation Probe",
-      held_amount: 710.0,
-      enforced_at: new Date(Date.now() - 1000 * 60 * 320).toISOString(),
-      reason_codes: [
-        {
-          code: "COL-TANDEM-02",
-          title: "Tandem Trajectory Correlation > 98%",
-          plain_language: "Two couriers maintained identical speeds and turns for over 45 minutes across 14 km.",
-          severity: "MEDIUM",
-        },
-      ],
-    },
-    uploaded_evidence: [
-      {
-        id: "ev-6",
-        name: "Flat_Tire_Photo_Highway99.jpg",
-        type: "image",
-        size: "2.1 MB",
-        timestamp: "13:48 UTC",
-        description: "Photo of punctured scooter tire on shoulder of Highway 99.",
-      },
-    ],
-    ai_recommendation: {
-      verdict: "REQUEST_INFO",
-      confidence: 72,
-      rationale:
-        "Tire photo confirms mechanical breakdown on Highway 99 shoulder. However, customer delivery confirmation signatures for both couriers show disparate dropoff timestamps. Request merchant order pickup receipt to verify sequence.",
-      suggested_redress: [
-        "Request merchant physical receipt for order #7712",
-        "Hold decision pending receipt verification",
-      ],
-    },
-    audit_trail: [
-      {
-        id: "aud-6",
-        timestamp: "5h ago",
-        actor: "Kenji Sato",
-        role: "Courier (CR-6650)",
-        action: "Appeal filed with tire photo.",
-      },
-      {
-        id: "aud-7",
-        timestamp: "1h ago",
-        actor: "Marcus Vance",
-        role: "Lead Analyst",
-        action: "Requested secondary merchant pickup receipts. Status set to Awaiting Rider.",
-      },
-    ],
+    reason: "False positive velocity jump caused by tunnel GPS multipath.",
+    supporting_text: "Attached dashcam footage demonstrating constant 35mph speed in 99 tunnel.",
+    status: "PENDING",
+    created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
   },
   {
     id: "APP-398",
     case_id: "CASE-8891",
-    rider_id: "CR-4402",
-    rider_name: "Aria Thorne",
-    rider_phone: "+1 (555) 612-4091",
-    rider_hub: "Airport Corridor",
+    rider_id: "CR-6650",
     reason: "Legitimate dual phone setup for navigation and company courier app.",
-    rider_statement:
-      "I use an older iPhone mounted on my handlebars purely for Google Maps turn-by-turn navigation because the screen is bright in sunlight, and my primary Pixel 8 in my pocket runs the courier dispatch app. There was no ghost rider.",
-    status: "RESOLVED",
-    resolution: "APPROVED",
-    reviewer_note: "Verified secondary handset has no courier app installation; bluetooth beacons attest to single operator. Hold released.",
-    sla_deadline: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-    created_at: new Date(Date.now() - 1000 * 60 * 480).toISOString(),
-    original_decision: {
-      verdict: "ESCROW_HOLD",
-      enforcement_title: "Multi-Handset Beacon Conflict",
-      held_amount: 480.5,
-      enforced_at: new Date(Date.now() - 1000 * 60 * 500).toISOString(),
-      reason_codes: [
-        {
-          code: "DEV-MULTI-03",
-          title: "Dual Bluetooth Beacon Transmit",
-          plain_language: "Two active cellular devices detected within 1 meter proximity throughout transit.",
-          severity: "MEDIUM",
-        },
-      ],
-    },
-    uploaded_evidence: [
-      {
-        id: "ev-7",
-        name: "Scooter_Handlebar_Mount_Setup.jpg",
-        type: "image",
-        size: "3.2 MB",
-        timestamp: "09:30 UTC",
-        description: "Photo showing dedicated GPS nav mount on scooter dashboard.",
-      },
-    ],
-    ai_recommendation: {
-      verdict: "APPROVE",
-      confidence: 96,
-      rationale:
-        "BLE attestation logs confirm secondary device MAC address only communicates with handlebar GPS mount. No secondary login tokens detected.",
-      suggested_redress: [
-        "Release held balance ($480.50)",
-        "Restore courier standing to Elite Tier",
-      ],
-    },
-    audit_trail: [
-      {
-        id: "aud-8",
-        timestamp: "8h ago",
-        actor: "Aria Thorne",
-        role: "Courier (CR-4402)",
-        action: "Appeal filed with handlebar photo.",
-      },
-      {
-        id: "aud-9",
-        timestamp: "4h ago",
-        actor: "Marcus Vance",
-        role: "Lead Analyst",
-        action: "Approved appeal. Payout released ($480.50) and account restored.",
-      },
-    ],
-    redress_applied: {
-      release_payout: true,
-      restore_account: true,
-    },
+    status: "OVERTURNED",
+    reviewer_note: "Verified secondary handset belongs to spouse on same delivery shift.",
+    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
   },
 ];
 
@@ -1054,208 +476,6 @@ export async function takeCaseAction(
   }
 }
 
-export async function addCaseNote(
-  caseId: string,
-  noteContent: string,
-  author: string = "Analyst",
-  role: string = "Fraud Analyst"
-): Promise<CaseItem> {
-  const newNote: CaseNote = {
-    id: `note-${Date.now()}`,
-    author,
-    role,
-    timestamp: "Just now",
-    content: noteContent,
-  };
-  const newTimelineItem: CaseTimelineItem = {
-    id: `tl-${Date.now()}`,
-    timestamp: "Just now",
-    event: `Note added by ${author}: "${noteContent.slice(0, 40)}..."`,
-    type: "action",
-    actor: author,
-  };
-
-  if (USE_MOCK) {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            notes: [...(c.notes || []), newNote],
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-  try {
-    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/notes`, {
-      method: "POST",
-      body: JSON.stringify({ content: noteContent, author, role }),
-    });
-  } catch {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            notes: [...(c.notes || []), newNote],
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-}
-
-export async function freezeCasePayout(
-  caseId: string,
-  freeze: boolean
-): Promise<CaseItem> {
-  const newTimelineItem: CaseTimelineItem = {
-    id: `tl-${Date.now()}`,
-    timestamp: "Just now",
-    event: freeze ? "Payout frozen into risk hold escrow" : "Payout hold released to courier wallet",
-    type: "action",
-  };
-
-  if (USE_MOCK) {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            payout_frozen: freeze,
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-  try {
-    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/freeze`, {
-      method: "POST",
-      body: JSON.stringify({ frozen: freeze }),
-    });
-  } catch {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            payout_frozen: freeze,
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-}
-
-export async function requestCaseLiveness(caseId: string): Promise<CaseItem> {
-  const newTimelineItem: CaseTimelineItem = {
-    id: `tl-${Date.now()}`,
-    timestamp: "Just now",
-    event: "Live 3D Biometric Liveness challenge dispatched to rider app",
-    type: "challenge",
-  };
-
-  if (USE_MOCK) {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            liveness_status: "PENDING",
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-  try {
-    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/liveness`, {
-      method: "POST",
-    });
-  } catch {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            liveness_status: "PENDING",
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-}
-
-export async function closeCaseWithOutcome(
-  caseId: string,
-  outcome: "fraud_confirmed" | "false_positive",
-  note: string,
-  author: string = "Analyst"
-): Promise<CaseItem> {
-  const status: CaseStatus = outcome === "fraud_confirmed" ? "RESTRICTED" : "RESOLVED_LEGIT";
-  const newTimelineItem: CaseTimelineItem = {
-    id: `tl-${Date.now()}`,
-    timestamp: "Just now",
-    event:
-      outcome === "fraud_confirmed"
-        ? `Case closed: Fraud Confirmed by ${author}. Courier restricted.`
-        : `Case closed: False Positive by ${author}. Payout cleared.`,
-    type: "action",
-    actor: author,
-  };
-  const newNote: CaseNote = {
-    id: `note-${Date.now()}`,
-    author,
-    role: "Adjudicator",
-    timestamp: "Just now",
-    content: `Outcome: ${outcome === "fraud_confirmed" ? "Fraud Confirmed" : "False Positive"}. ${note}`,
-  };
-
-  if (USE_MOCK) {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            status: "CLOSED",
-            outcome,
-            payout_frozen: outcome === "fraud_confirmed",
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            notes: [...(c.notes || []), newNote],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-  try {
-    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/close`, {
-      method: "POST",
-      body: JSON.stringify({ outcome, note, status }),
-    });
-  } catch {
-    mockCases = mockCases.map((c) =>
-      c.case_id === caseId
-        ? {
-            ...c,
-            status: "CLOSED",
-            outcome,
-            payout_frozen: outcome === "fraud_confirmed",
-            timeline: [newTimelineItem, ...(c.timeline || [])],
-            notes: [...(c.notes || []), newNote],
-            updated_at: new Date().toISOString(),
-          }
-        : c
-    );
-    return mockCases.find((c) => c.case_id === caseId)!;
-  }
-}
-
 // 4. Appeals
 export async function listAppeals(): Promise<AppealItem[]> {
   if (USE_MOCK) {
@@ -1272,15 +492,12 @@ export async function resolveAppeal(
   appealId: string,
   payload: { action: "overturned" | "upheld"; note: string }
 ): Promise<AppealItem> {
-  const status: AppealStatus = "RESOLVED";
-  const resolution = payload.action === "overturned" ? "APPROVED" : "REJECTED";
   if (USE_MOCK) {
     mockAppeals = mockAppeals.map((a) =>
       a.id === appealId
         ? {
             ...a,
-            status,
-            resolution,
+            status: payload.action === "overturned" ? "OVERTURNED" : "UPHELD",
             reviewer_note: payload.note,
           }
         : a
@@ -1297,165 +514,8 @@ export async function resolveAppeal(
       a.id === appealId
         ? {
             ...a,
-            status,
-            resolution,
+            status: payload.action === "overturned" ? "OVERTURNED" : "UPHELD",
             reviewer_note: payload.note,
-          }
-        : a
-    );
-    return mockAppeals.find((a) => a.id === appealId)!;
-  }
-}
-
-export async function approveAppeal(
-  appealId: string,
-  redress: { release_payout: boolean; restore_account: boolean; note?: string },
-  author: string = "Analyst"
-): Promise<AppealItem> {
-  const auditEntry: AppealAuditEntry = {
-    id: `aud-${Date.now()}`,
-    timestamp: "Just now",
-    actor: author,
-    role: "Adjudicator",
-    action: `Approved appeal with redress: ${[
-      redress.release_payout ? "Released Payout" : null,
-      redress.restore_account ? "Restored Account" : null,
-    ]
-      .filter(Boolean)
-      .join(", ")}`,
-    note: redress.note,
-  };
-
-  if (USE_MOCK) {
-    mockAppeals = mockAppeals.map((a) =>
-      a.id === appealId
-        ? {
-            ...a,
-            status: "RESOLVED",
-            resolution: "APPROVED",
-            reviewer_note: redress.note || "Appeal approved and redress applied.",
-            redress_applied: {
-              release_payout: redress.release_payout,
-              restore_account: redress.restore_account,
-            },
-            audit_trail: [auditEntry, ...a.audit_trail],
-          }
-        : a
-    );
-    return mockAppeals.find((a) => a.id === appealId)!;
-  }
-  try {
-    return await apiClient<AppealItem>(`/api/v1/appeals/${appealId}/approve`, {
-      method: "POST",
-      body: JSON.stringify({ redress, author }),
-    });
-  } catch {
-    mockAppeals = mockAppeals.map((a) =>
-      a.id === appealId
-        ? {
-            ...a,
-            status: "RESOLVED",
-            resolution: "APPROVED",
-            reviewer_note: redress.note || "Appeal approved and redress applied.",
-            redress_applied: {
-              release_payout: redress.release_payout,
-              restore_account: redress.restore_account,
-            },
-            audit_trail: [auditEntry, ...a.audit_trail],
-          }
-        : a
-    );
-    return mockAppeals.find((a) => a.id === appealId)!;
-  }
-}
-
-export async function rejectAppeal(
-  appealId: string,
-  reason: string,
-  note: string,
-  author: string = "Analyst"
-): Promise<AppealItem> {
-  const auditEntry: AppealAuditEntry = {
-    id: `aud-${Date.now()}`,
-    timestamp: "Just now",
-    actor: author,
-    role: "Adjudicator",
-    action: `Rejected appeal. Reason: ${reason}`,
-    note,
-  };
-
-  if (USE_MOCK) {
-    mockAppeals = mockAppeals.map((a) =>
-      a.id === appealId
-        ? {
-            ...a,
-            status: "RESOLVED",
-            resolution: "REJECTED",
-            reviewer_note: `Reason: ${reason}. Note: ${note}`,
-            audit_trail: [auditEntry, ...a.audit_trail],
-          }
-        : a
-    );
-    return mockAppeals.find((a) => a.id === appealId)!;
-  }
-  try {
-    return await apiClient<AppealItem>(`/api/v1/appeals/${appealId}/reject`, {
-      method: "POST",
-      body: JSON.stringify({ reason, note, author }),
-    });
-  } catch {
-    mockAppeals = mockAppeals.map((a) =>
-      a.id === appealId
-        ? {
-            ...a,
-            status: "RESOLVED",
-            resolution: "REJECTED",
-            reviewer_note: `Reason: ${reason}. Note: ${note}`,
-            audit_trail: [auditEntry, ...a.audit_trail],
-          }
-        : a
-    );
-    return mockAppeals.find((a) => a.id === appealId)!;
-  }
-}
-
-export async function requestMoreInfoForAppeal(
-  appealId: string,
-  infoRequest: string,
-  author: string = "Analyst"
-): Promise<AppealItem> {
-  const auditEntry: AppealAuditEntry = {
-    id: `aud-${Date.now()}`,
-    timestamp: "Just now",
-    actor: author,
-    role: "Adjudicator",
-    action: `Requested additional evidence from rider: "${infoRequest}"`,
-  };
-
-  if (USE_MOCK) {
-    mockAppeals = mockAppeals.map((a) =>
-      a.id === appealId
-        ? {
-            ...a,
-            status: "AWAITING_RIDER",
-            audit_trail: [auditEntry, ...a.audit_trail],
-          }
-        : a
-    );
-    return mockAppeals.find((a) => a.id === appealId)!;
-  }
-  try {
-    return await apiClient<AppealItem>(`/api/v1/appeals/${appealId}/request-info`, {
-      method: "POST",
-      body: JSON.stringify({ infoRequest, author }),
-    });
-  } catch {
-    mockAppeals = mockAppeals.map((a) =>
-      a.id === appealId
-        ? {
-            ...a,
-            status: "AWAITING_RIDER",
-            audit_trail: [auditEntry, ...a.audit_trail],
           }
         : a
     );
@@ -2044,49 +1104,385 @@ export async function getGraphClusters(): Promise<GraphCluster[]> {
   }
 }
 
-// 7. Policy Simulator
-export async function getPolicies(): Promise<PolicyThresholds> {
-  const defaultPolicy: PolicyThresholds = {
-    allow_threshold: 75.0,
-    challenge_threshold: 50.0,
-    investigate_threshold: 25.0,
+// 7. Policy Simulator & Version Governance
+export const DEFAULT_ACTIVE_POLICY_CONFIG: PolicyRuleConfig = {
+  challenge_threshold: 50,
+  escalate_threshold: 25,
+  allow_threshold: 75,
+  max_velocity_kmh: 120,
+  min_face_match: 0.85,
+  hold_window_hours: 24,
+  rules: {
+    velocity_rule_active: true,
+    face_match_rule_active: true,
+    hold_window_active: true,
+    emulator_block_active: true,
+    device_collision_active: true,
+  },
+};
+
+let currentActivePolicyConfig: PolicyRuleConfig = { ...DEFAULT_ACTIVE_POLICY_CONFIG };
+
+let mockPolicyVersions: PolicyVersion[] = [
+  {
+    id: "POL-v2.4.2",
+    version_tag: "v2.4.2",
+    name: "Production Balanced Standard",
+    config: {
+      challenge_threshold: 50,
+      escalate_threshold: 25,
+      allow_threshold: 75,
+      max_velocity_kmh: 120,
+      min_face_match: 0.85,
+      hold_window_hours: 24,
+      rules: {
+        velocity_rule_active: true,
+        face_match_rule_active: true,
+        hold_window_active: true,
+        emulator_block_active: true,
+        device_collision_active: true,
+      },
+    },
+    status: "ACTIVE",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
+    deployed_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
+    deployed_by: "Marcus Vance (Admin)",
+    notes: "Baseline calibrated for metro delivery corridors with 24h escrow window.",
+  },
+  {
+    id: "POL-v2.4.1",
+    version_tag: "v2.4.1",
+    name: "High Friction Fraud Defense",
+    config: {
+      challenge_threshold: 58,
+      escalate_threshold: 30,
+      allow_threshold: 80,
+      max_velocity_kmh: 105,
+      min_face_match: 0.90,
+      hold_window_hours: 36,
+      rules: {
+        velocity_rule_active: true,
+        face_match_rule_active: true,
+        hold_window_active: true,
+        emulator_block_active: true,
+        device_collision_active: true,
+      },
+    },
+    status: "ARCHIVED",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 240).toISOString(),
+    deployed_at: new Date(Date.now() - 1000 * 60 * 60 * 240).toISOString(),
+    deployed_by: "Marcus Vance (Admin)",
+    notes: "Tightened during weekend syndicate attack wave on Cluster-409.",
+  },
+  {
+    id: "POL-v2.4.0",
+    version_tag: "v2.4.0",
+    name: "Initial Platform Rollout",
+    config: {
+      challenge_threshold: 45,
+      escalate_threshold: 20,
+      allow_threshold: 70,
+      max_velocity_kmh: 140,
+      min_face_match: 0.80,
+      hold_window_hours: 12,
+      rules: {
+        velocity_rule_active: true,
+        face_match_rule_active: false,
+        hold_window_active: true,
+        emulator_block_active: true,
+        device_collision_active: false,
+      },
+    },
+    status: "ARCHIVED",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 600).toISOString(),
+    deployed_at: new Date(Date.now() - 1000 * 60 * 60 * 600).toISOString(),
+    deployed_by: "System Initializer",
+    notes: "Initial launch configuration prior to biometric pipeline integration.",
+  },
+  {
+    id: "POL-DRAFT-2026Q4",
+    version_tag: "v2.5.0-draft",
+    name: "Q4 Holiday Velocity Hardening",
+    config: {
+      challenge_threshold: 54,
+      escalate_threshold: 28,
+      allow_threshold: 78,
+      max_velocity_kmh: 110,
+      min_face_match: 0.88,
+      hold_window_hours: 24,
+      rules: {
+        velocity_rule_active: true,
+        face_match_rule_active: true,
+        hold_window_active: true,
+        emulator_block_active: true,
+        device_collision_active: true,
+      },
+    },
+    status: "DRAFT",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
+    deployed_by: "Elena Rostova (Analyst)",
+    notes: "Proposed draft for high-volume holiday peak protection.",
+  },
+];
+
+export async function getPolicies(): Promise<PolicyThresholds & { current_config: PolicyRuleConfig; versions: PolicyVersion[] }> {
+  const result = {
+    allow_threshold: currentActivePolicyConfig.allow_threshold || 75.0,
+    challenge_threshold: currentActivePolicyConfig.challenge_threshold,
+    investigate_threshold: currentActivePolicyConfig.escalate_threshold,
     block_threshold: 10.0,
+    current_config: currentActivePolicyConfig,
+    versions: mockPolicyVersions,
   };
 
-  if (USE_MOCK) return defaultPolicy;
+  if (USE_MOCK) return result;
   try {
-    return await apiClient<PolicyThresholds>("/api/v1/policies");
+    const data = await apiClient<any>("/api/v1/policies");
+    return { ...result, ...data };
   } catch {
-    return defaultPolicy;
+    return result;
   }
 }
 
-export async function simulatePolicy(payload: PolicyThresholds): Promise<PolicySimResult> {
-  if (USE_MOCK) {
-    return {
-      policy_id: `sim_${Date.now()}`,
-      sessions_evaluated: 10000,
-      simulated_pass_rate: 0.948,
-      simulated_friction_rate: 0.042,
-      simulated_fraud_catch_rate: 0.986,
-      estimated_chargeback_reduction_pct: 38.2,
-    };
+export async function getPolicyVersions(): Promise<PolicyVersion[]> {
+  return mockPolicyVersions;
+}
+
+export function computePolicySimulation(proposed: PolicyRuleConfig): PolicySimulationComparison {
+  const current = currentActivePolicyConfig;
+  const sessions = 15000;
+
+  // Baseline Current Metrics
+  const curAllow = 94.8;
+  const curChallenge = 3.8;
+  const curEscalate = 1.4;
+  const curFalsePositives = 36;
+  const curPayoutsAffected = 14;
+  const curPayoutsAmount = 18420;
+  const curFraudCaught = 94.2;
+
+  // Compute Proposed Metrics relative to changes
+  const cDiff = proposed.challenge_threshold - current.challenge_threshold;
+  const eDiff = proposed.escalate_threshold - current.escalate_threshold;
+  const vDiff = (current.max_velocity_kmh - proposed.max_velocity_kmh) / 10;
+  const fDiff = (proposed.min_face_match - current.min_face_match) * 10;
+  const hDiff = proposed.hold_window_hours - current.hold_window_hours;
+
+  // Rule activation multipliers
+  const velocityPenalty = proposed.rules.velocity_rule_active ? 0 : -8.5;
+  const facePenalty = proposed.rules.face_match_rule_active ? 0 : -11.2;
+  const holdMultiplier = proposed.rules.hold_window_active ? 1.0 : 0.2;
+  const emulatorPenalty = proposed.rules.emulator_block_active ? 0 : -14.0;
+  const collisionPenalty = proposed.rules.device_collision_active ? 0 : -16.5;
+
+  // Proposed Allow %
+  let propAllow = curAllow - (cDiff * 0.14) - (eDiff * 0.08) - (vDiff * 0.25) - (fDiff * 0.35);
+  if (!proposed.rules.velocity_rule_active) propAllow += 1.8;
+  if (!proposed.rules.face_match_rule_active) propAllow += 2.2;
+  if (!proposed.rules.emulator_block_active) propAllow += 1.5;
+  propAllow = Math.min(98.8, Math.max(78.0, Number(propAllow.toFixed(1))));
+
+  // Proposed Challenge %
+  let propChallenge = curChallenge + (cDiff * 0.12) + (fDiff * 0.45) + (vDiff * 0.15);
+  if (!proposed.rules.face_match_rule_active) propChallenge -= 1.8;
+  propChallenge = Math.min(18.0, Math.max(1.0, Number(propChallenge.toFixed(1))));
+
+  // Proposed Escalate %
+  let propEscalate = Number((100 - propAllow - propChallenge).toFixed(1));
+  if (propEscalate < 0.2) {
+    propEscalate = 0.2;
+    propAllow = Number((100 - propChallenge - propEscalate).toFixed(1));
   }
-  try {
-    return await apiClient<PolicySimResult>("/api/v1/policies/simulate", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    return {
-      policy_id: `sim_${Date.now()}`,
-      sessions_evaluated: 10000,
-      simulated_pass_rate: 0.948,
-      simulated_friction_rate: 0.042,
-      simulated_fraud_catch_rate: 0.986,
-      estimated_chargeback_reduction_pct: 38.2,
-    };
+
+  // False Positives
+  let propFP = Math.round(
+    curFalsePositives +
+    (cDiff * 0.9) +
+    (fDiff * 14) +
+    (vDiff > 0 ? vDiff * 2 : vDiff)
+  );
+  if (!proposed.rules.face_match_rule_active) propFP = Math.max(8, propFP - 12);
+  propFP = Math.max(6, Math.min(180, propFP));
+
+  // Payouts Affected
+  let propPayouts = Math.round(
+    (curPayoutsAffected + (eDiff * 0.55) + (hDiff * 0.25)) * holdMultiplier
+  );
+  propPayouts = Math.max(1, Math.min(95, propPayouts));
+  const propPayoutsAmount = Math.round(propPayouts * 1315);
+
+  // Fraud Caught %
+  let propFraud =
+    curFraudCaught +
+    (cDiff * 0.22) +
+    (eDiff * 0.18) +
+    (vDiff * 0.8) +
+    (fDiff * 1.2) +
+    velocityPenalty +
+    facePenalty +
+    emulatorPenalty +
+    collisionPenalty;
+  propFraud = Math.min(99.6, Math.max(52.0, Number(propFraud.toFixed(1))));
+
+  return {
+    policy_id: `SIM-${Date.now()}`,
+    current: {
+      allow_pct: curAllow,
+      challenge_pct: curChallenge,
+      escalate_pct: curEscalate,
+      estimated_false_positives: curFalsePositives,
+      payouts_affected: curPayoutsAffected,
+      payouts_affected_amount: curPayoutsAmount,
+      estimated_fraud_caught_pct: curFraudCaught,
+      sessions_evaluated: sessions,
+    },
+    proposed: {
+      allow_pct: propAllow,
+      challenge_pct: propChallenge,
+      escalate_pct: propEscalate,
+      estimated_false_positives: propFP,
+      payouts_affected: propPayouts,
+      payouts_affected_amount: propPayoutsAmount,
+      estimated_fraud_caught_pct: propFraud,
+      sessions_evaluated: sessions,
+    },
+    diff: {
+      allow_delta_pct: Number((propAllow - curAllow).toFixed(1)),
+      challenge_delta_pct: Number((propChallenge - curChallenge).toFixed(1)),
+      escalate_delta_pct: Number((propEscalate - curEscalate).toFixed(1)),
+      false_positives_delta: propFP - curFalsePositives,
+      payouts_affected_delta: propPayouts - curPayoutsAffected,
+      payouts_affected_amount_delta: propPayoutsAmount - curPayoutsAmount,
+      fraud_caught_delta_pct: Number((propFraud - curFraudCaught).toFixed(1)),
+    },
+    sessions_evaluated: sessions,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+export async function simulatePolicy(
+  payload: PolicyRuleConfig | PolicyThresholds
+): Promise<PolicySimulationComparison & PolicySimResult> {
+  const normalizedConfig: PolicyRuleConfig =
+    "challenge_threshold" in payload && "rules" in payload
+      ? (payload as PolicyRuleConfig)
+      : {
+          challenge_threshold: payload.challenge_threshold,
+          escalate_threshold: (payload as PolicyThresholds).investigate_threshold || 25,
+          allow_threshold: (payload as PolicyThresholds).allow_threshold || 75,
+          max_velocity_kmh: 120,
+          min_face_match: 0.85,
+          hold_window_hours: 24,
+          rules: {
+            velocity_rule_active: true,
+            face_match_rule_active: true,
+            hold_window_active: true,
+            emulator_block_active: true,
+            device_collision_active: true,
+          },
+        };
+
+  const comparison = computePolicySimulation(normalizedConfig);
+
+  const backwardCompatibleResult: PolicySimResult = {
+    policy_id: comparison.policy_id,
+    sessions_evaluated: comparison.sessions_evaluated,
+    simulated_pass_rate: comparison.proposed.allow_pct / 100,
+    simulated_friction_rate: comparison.proposed.challenge_pct / 100,
+    simulated_fraud_catch_rate: comparison.proposed.estimated_fraud_caught_pct / 100,
+    estimated_chargeback_reduction_pct: Number(
+      Math.max(12, comparison.proposed.estimated_fraud_caught_pct * 0.42).toFixed(1)
+    ),
+  };
+
+  return {
+    ...comparison,
+    ...backwardCompatibleResult,
+  };
+}
+
+export async function savePolicyDraft(
+  config: PolicyRuleConfig,
+  name?: string
+): Promise<PolicyVersion> {
+  const newVersion: PolicyVersion = {
+    id: `POL-DRAFT-${Date.now().toString().slice(-6)}`,
+    version_tag: `v2.5.0-draft-${mockPolicyVersions.filter((v) => v.status === "DRAFT").length + 1}`,
+    name: name || "Custom Tuned Draft",
+    config: { ...config },
+    status: "DRAFT",
+    created_at: new Date().toISOString(),
+    deployed_by: "Current User",
+    notes: "Saved policy draft configuration for offline evaluation and review.",
+  };
+
+  mockPolicyVersions = [newVersion, ...mockPolicyVersions];
+  return newVersion;
+}
+
+export async function deployPolicy(
+  config: PolicyRuleConfig,
+  notes?: string,
+  deployedBy: string = "Admin"
+): Promise<PolicyVersion> {
+  // Archive previously active versions
+  mockPolicyVersions = mockPolicyVersions.map((v) =>
+    v.status === "ACTIVE"
+      ? { ...v, status: "ARCHIVED" as const }
+      : v
+  );
+
+  const activeCount = mockPolicyVersions.filter((v) => v.status === "ARCHIVED").length + 1;
+  const versionTag = `v2.${activeCount + 3}.0`;
+
+  const deployedVersion: PolicyVersion = {
+    id: `POL-${versionTag}`,
+    version_tag: versionTag,
+    name: `Fleet Policy ${versionTag}`,
+    config: { ...config },
+    status: "ACTIVE",
+    created_at: new Date().toISOString(),
+    deployed_at: new Date().toISOString(),
+    deployed_by: deployedBy,
+    notes: notes || "Manual deployment from Policy Simulator console with full diff verification.",
+  };
+
+  currentActivePolicyConfig = { ...config };
+  mockPolicyVersions = [deployedVersion, ...mockPolicyVersions];
+  return deployedVersion;
+}
+
+export async function rollbackPolicy(
+  versionId: string,
+  deployedBy: string = "Admin (Rollback)"
+): Promise<PolicyVersion> {
+  const target = mockPolicyVersions.find((v) => v.id === versionId);
+  if (!target) {
+    throw new Error(`Policy version ${versionId} not found.`);
   }
+
+  // Archive previously active versions
+  mockPolicyVersions = mockPolicyVersions.map((v) =>
+    v.status === "ACTIVE"
+      ? { ...v, status: "ARCHIVED" as const }
+      : v
+  );
+
+  const rollbackVersion: PolicyVersion = {
+    id: `POL-ROLLBACK-${Date.now().toString().slice(-6)}`,
+    version_tag: `${target.version_tag}-rollback`,
+    name: `Rollback to ${target.name}`,
+    config: { ...target.config },
+    status: "ACTIVE",
+    created_at: new Date().toISOString(),
+    deployed_at: new Date().toISOString(),
+    deployed_by: deployedBy,
+    notes: `Rollback to version ${target.version_tag} (${target.name}) initiated.`,
+  };
+
+  currentActivePolicyConfig = { ...target.config };
+  mockPolicyVersions = [rollbackVersion, ...mockPolicyVersions];
+  return rollbackVersion;
 }
 
 // 8. Demo Controls
