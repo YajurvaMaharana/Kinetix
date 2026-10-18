@@ -34,12 +34,32 @@ def get_db() -> Generator[Session, None, None]:
 
 def create_all(target_engine=None):
     """
-    Initializes and creates all database tables.
+    Initializes and creates all database tables and ensures missing SQLite columns are added.
     """
     eng = target_engine or engine
     import app.models  # noqa: F401
 
     Base.metadata.create_all(bind=eng)
+
+    try:
+        with eng.connect() as conn:
+            if eng.dialect.name == "sqlite":
+                cursor = conn.connection.cursor()
+                for table_name, table in Base.metadata.tables.items():
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    existing_cols = {row[1]: row for row in cursor.fetchall()}
+                    if not existing_cols:
+                        continue
+                    for col in table.columns:
+                        if col.name not in existing_cols:
+                            col_type = col.type.compile(eng.dialect)
+                            try:
+                                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}")
+                            except Exception:
+                                pass
+                conn.connection.commit()
+    except Exception:
+        pass
 
 
 def drop_all(target_engine=None):

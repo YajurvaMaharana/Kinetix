@@ -1,7 +1,13 @@
 import os
+from pathlib import Path
 from typing import List
 
 from pydantic import BaseModel, Field
+
+# Unified consistent database path
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_DB_FILE = (ROOT_DIR / "trustjuggler.db").resolve()
+DEFAULT_DATABASE_URL = f"sqlite:///{DEFAULT_DB_FILE.as_posix()}"
 
 
 class Settings(BaseModel):
@@ -24,7 +30,9 @@ class Settings(BaseModel):
 
     # Database
     DATABASE_URL: str = Field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./trustjuggler.db")
+        default_factory=lambda: os.getenv("DATABASE_URL")
+        if os.getenv("DATABASE_URL") and not os.getenv("DATABASE_URL").endswith("./trustjuggler.db")
+        else DEFAULT_DATABASE_URL
     )
 
     # Cryptography & Device Passport Security

@@ -187,6 +187,10 @@ class Session(Base):
     )
     challenges: Mapped[List["Challenge"]] = relationship("Challenge", back_populates="session")
 
+    @property
+    def risk_assessment(self) -> Optional["RiskAssessment"]:
+        return self.assessments[-1] if self.assessments else None
+
     @validates("ip_address")
     def validate_ip_address(self, key: str, value: Any) -> str:
         from app.services.privacy import IPV4_REGEX, tokenize

@@ -170,8 +170,14 @@ class CaseService:
             if c.threat_tag:
                 threat_tags.append(c.threat_tag)
 
-            if c.session and c.session.risk_assessment:
-                ass = c.session.risk_assessment
+            ass = None
+            if c.session:
+                if getattr(c.session, "risk_assessment", None):
+                    ass = c.session.risk_assessment
+                elif getattr(c.session, "assessments", None) and c.session.assessments:
+                    ass = c.session.assessments[-1]
+
+            if ass:
                 if risk == 0.0:
                     risk = ass.risk_score
                 if ass.threat_tags:
