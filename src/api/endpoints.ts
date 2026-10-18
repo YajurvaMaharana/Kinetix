@@ -60,18 +60,70 @@ export interface AssessmentResponse {
   evaluated_at: string;
 }
 
+export type CaseStatus = "OPEN" | "IN_REVIEW" | "ESCALATED" | "CLOSED" | "RESOLVED_LEGIT" | "RESTRICTED";
+
+export interface CaseSignalEvidence {
+  name: string;
+  score: number;
+  weight: number;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  description: string;
+}
+
+export interface CaseLinkedRider {
+  rider_id: string;
+  name: string;
+  relationship: string;
+  risk: number;
+}
+
+export interface CaseLinkedDevice {
+  device_id: string;
+  model: string;
+  imei: string;
+  os: string;
+  root: boolean;
+}
+
+export interface CaseTimelineItem {
+  id: string;
+  timestamp: string;
+  event: string;
+  type: "alert" | "challenge" | "action" | "system";
+  actor?: string;
+}
+
+export interface CaseNote {
+  id: string;
+  author: string;
+  role: string;
+  timestamp: string;
+  content: string;
+}
+
 export interface CaseItem {
   case_id: string;
   session_id: string;
   rider_id: string;
   rider_name?: string;
+  hub?: string;
+  title?: string;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  status: "OPEN" | "IN_REVIEW" | "RESOLVED_LEGIT" | "RESTRICTED";
+  status: CaseStatus;
+  outcome?: "fraud_confirmed" | "false_positive";
   assigned_to: string | null;
   threat_summary: string;
   risk_score: number;
   created_at: string;
   updated_at?: string;
+  payout_held?: number;
+  payout_frozen?: boolean;
+  liveness_status?: "NOT_REQUESTED" | "PENDING" | "PASSED" | "FAILED";
+  signals?: CaseSignalEvidence[];
+  linked_riders?: CaseLinkedRider[];
+  linked_devices?: CaseLinkedDevice[];
+  timeline?: CaseTimelineItem[];
+  notes?: CaseNote[];
 }
 
 export interface AppealItem {
@@ -130,36 +182,274 @@ let mockCases: CaseItem[] = [
     session_id: "sess_spoof_9004",
     rider_id: "CR-8941",
     rider_name: "Alex Rivera",
+    hub: "Downtown",
+    title: "GPS Mock Provider Delta: 184 km/h jump",
     severity: "HIGH",
     status: "OPEN",
     assigned_to: "marcus_vance",
-    threat_summary: "GPS Mock Provider Delta: 184 km/h jump during active delivery.",
+    threat_summary: "GPS Mock Provider Delta: 184 km/h jump during active delivery along 4th Ave.",
     risk_score: 89,
     created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
+    payout_held: 1240.0,
+    payout_frozen: true,
+    liveness_status: "FAILED",
+    signals: [
+      { name: "Mock Provider Flag", score: 98, weight: 0.35, severity: "HIGH", description: "Android LocationManager.isFromMockProvider returned TRUE during dropoff." },
+      { name: "Kinematic Impossibility", score: 92, weight: 0.30, severity: "HIGH", description: "Calculated traversal velocity 184.2 km/h across 800m grid." },
+      { name: "Accelerometer Divergence", score: 81, weight: 0.20, severity: "MEDIUM", description: "Zero vehicular vibration detected while coordinates shifted 1.4km." },
+      { name: "Root & Hooking Integrity", score: 76, weight: 0.15, severity: "MEDIUM", description: "Substrate hooking framework detected in system runtime." },
+    ],
+    linked_riders: [
+      { rider_id: "CR-9023", name: "Tariq Vance", relationship: "Shared hardware token IMEI-e3b0", risk: 84 },
+      { rider_id: "CR-5542", name: "David Kim", relationship: "Linked Chase Checking •••• 9921", risk: 94 },
+    ],
+    linked_devices: [
+      { device_id: "DEV-IMEI-e3b0", model: "Xiaomi Redmi 12 (Rooted)", imei: "864192040182941", os: "Android 13 (Magisk)", root: true },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "18m ago", event: "Sensor stream flagged abnormal kinematic acceleration (184 km/h)", type: "alert" },
+      { id: "tl-2", timestamp: "17m ago", event: "Automated Challenge dispatched: Active 3D Face Liveness required", type: "challenge" },
+      { id: "tl-3", timestamp: "12m ago", event: "Challenge failed: Courier aborted camera verification within 300s window", type: "challenge" },
+      { id: "tl-4", timestamp: "10m ago", event: "Auto-hold triggered: Payout $1,240.00 frozen in risk escrow", type: "action" },
+      { id: "tl-5", timestamp: "8m ago", event: "Case auto-generated and assigned to Marcus Vance (Lead Analyst)", type: "system", actor: "Risk Engine" },
+    ],
+    notes: [
+      { id: "n-1", author: "Marcus Vance", role: "Lead Analyst", timestamp: "6m ago", content: "Reviewing telemetry logs. Courier appears to be using a location spoofing joystick app while parked at 2nd & Pike." },
+    ],
   },
   {
     case_id: "CASE-9005",
     session_id: "sess_ring_9005",
     rider_id: "CR-9023",
     rider_name: "Tariq Vance",
+    hub: "Downtown",
+    title: "Collusion Cluster #C-902: 4 riders on single IMEI",
     severity: "CRITICAL",
     status: "IN_REVIEW",
     assigned_to: "elena_rostova",
-    threat_summary: "Collusion Cluster #C-902: 4 riders linked to single IMEI hardware key.",
+    threat_summary: "Collusion Cluster #C-902: 4 couriers linked to single IMEI hardware key and common bank route.",
     risk_score: 94,
     created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    payout_held: 840.5,
+    payout_frozen: true,
+    liveness_status: "PENDING",
+    signals: [
+      { name: "Hardware Key Collision", score: 99, weight: 0.40, severity: "HIGH", description: "Cryptographic hardware attestation collision with 3 active fleet accounts." },
+      { name: "Simultaneous Session Auth", score: 95, weight: 0.30, severity: "HIGH", description: "3 distinct courier orders checked in within 90 seconds from 1 IP." },
+      { name: "Bank Route Overlap", score: 88, weight: 0.30, severity: "HIGH", description: "JPMorgan Chase routing •••• 9921 shared across accounts." },
+    ],
+    linked_riders: [
+      { rider_id: "CR-8941", name: "Alex Rivera", relationship: "Syndicate member #C-902", risk: 89 },
+      { rider_id: "CR-5542", name: "David Kim", relationship: "Shared payout escrow account", risk: 94 },
+    ],
+    linked_devices: [
+      { device_id: "DEV-IMEI-e3b0", model: "Xiaomi Redmi 12 (Rooted)", imei: "864192040182941", os: "Android 13 (Magisk)", root: true },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "45m ago", event: "Graph engine detected cluster #C-902 threshold breach (density 0.94)", type: "alert" },
+      { id: "tl-2", timestamp: "35m ago", event: "Payout held: $840.50 marked under Syndicate Review", type: "action" },
+      { id: "tl-3", timestamp: "20m ago", event: "Analyst Elena Rostova claimed case for device farm investigation", type: "system", actor: "Elena Rostova" },
+    ],
+    notes: [
+      { id: "n-1", author: "Elena Rostova", role: "Fraud Analyst", timestamp: "15m ago", content: "Subpoenaed carrier logs confirm single base transceiver station cell for all 3 devices simultaneously." },
+    ],
+  },
+  {
+    case_id: "CASE-9007",
+    session_id: "sess_hash_9007",
+    rider_id: "CR-3319",
+    rider_name: "Carlos Mendez",
+    hub: "North Hub",
+    title: "Device Fingerprint Hash Collision across 3 shifts",
+    severity: "HIGH",
+    status: "OPEN",
+    assigned_to: null,
+    threat_summary: "Device Fingerprint Hash Collision across 3 shifts on alternating morning routes.",
+    risk_score: 82,
+    created_at: new Date(Date.now() - 1000 * 60 * 75).toISOString(),
+    payout_held: 390.0,
+    payout_frozen: false,
+    liveness_status: "NOT_REQUESTED",
+    signals: [
+      { name: "Canvas/WebGL Fingerprint", score: 89, weight: 0.40, severity: "HIGH", description: "100% hash equivalence with banned account CR-1092." },
+      { name: "SIM IMSI Churn", score: 79, weight: 0.35, severity: "MEDIUM", description: "3 different prepaid SIM cards inserted over 48 hours." },
+    ],
+    linked_riders: [
+      { rider_id: "CR-1092", name: "Marcus Brody (Banned)", relationship: "Prior account device holder", risk: 96 },
+    ],
+    linked_devices: [
+      { device_id: "DEV-MOTO-91", model: "Motorola Moto G Power", imei: "359182049102918", os: "Android 12", root: false },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "1h ago", event: "Canvas hash match triggered high-risk alert", type: "alert" },
+    ],
+    notes: [],
+  },
+  {
+    case_id: "CASE-9008",
+    session_id: "sess_hop_9008",
+    rider_id: "CR-7104",
+    rider_name: "Siddharth Nair",
+    hub: "Airport Corridor",
+    title: "Velocity Hop & Spatio-temporal Teleportation",
+    severity: "MEDIUM",
+    status: "IN_REVIEW",
+    assigned_to: "marcus_vance",
+    threat_summary: "Instantaneous 12km position jump between Airport Cargo Terminal and West Seattle.",
+    risk_score: 74,
+    created_at: new Date(Date.now() - 1000 * 60 * 110).toISOString(),
+    payout_held: 512.0,
+    payout_frozen: true,
+    liveness_status: "PENDING",
+    signals: [
+      { name: "Cell Tower vs GPS Drift", score: 84, weight: 0.50, severity: "HIGH", description: "Cell tower triangulation indicates South Seattle while GPS reports West Seattle." },
+      { name: "Order Acceptance Speed", score: 72, weight: 0.50, severity: "MEDIUM", description: "Batch accepted within 220ms of broadcast." },
+    ],
+    linked_riders: [],
+    linked_devices: [
+      { device_id: "DEV-PIXEL-7A", model: "Google Pixel 7a", imei: "354091829012391", os: "Android 14", root: false },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "2h ago", event: "Position teleportation spike detected", type: "alert" },
+      { id: "tl-2", timestamp: "1h ago", event: "Payout held: $512.00 subject to route audit", type: "action" },
+    ],
+    notes: [
+      { id: "n-1", author: "Marcus Vance", role: "Lead Analyst", timestamp: "40m ago", content: "Evaluating airport tunnel signal blackout vs intentional GPS coordinate inject." },
+    ],
+  },
+  {
+    case_id: "CASE-9009",
+    session_id: "sess_escrow_9009",
+    rider_id: "CR-5542",
+    rider_name: "David Kim",
+    hub: "South Bay",
+    title: "Multi-courier Chase Escrow Syndicate Node",
+    severity: "CRITICAL",
+    status: "ESCALATED",
+    assigned_to: "elena_rostova",
+    threat_summary: "Multi-courier Chase Escrow Syndicate Node: beneficiary routing linked to 6 active fraud cases.",
+    risk_score: 97,
+    created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+    payout_held: 3420.0,
+    payout_frozen: true,
+    liveness_status: "FAILED",
+    signals: [
+      { name: "Syndicate Money Mule Vector", score: 99, weight: 0.50, severity: "HIGH", description: "Bank account linked to $14,200 in aggregate dispute flags." },
+      { name: "Biometric Injection Attempt", score: 96, weight: 0.50, severity: "HIGH", description: "Virtual camera driver intercepted during liveness challenge." },
+    ],
+    linked_riders: [
+      { rider_id: "CR-8941", name: "Alex Rivera", relationship: "Shared payout account", risk: 89 },
+      { rider_id: "CR-9023", name: "Tariq Vance", relationship: "Shared payout account", risk: 94 },
+    ],
+    linked_devices: [
+      { device_id: "DEV-ONEPLUS-11", model: "OnePlus 11", imei: "869102930192841", os: "OxygenOS 14 (Rooted)", root: true },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "3h ago", event: "Escalated by Chief Auditor to Legal & Compliance", type: "system" },
+      { id: "tl-2", timestamp: "2h ago", event: "Freeze placed on total fleet balance ($3,420.00)", type: "action" },
+    ],
+    notes: [
+      { id: "n-1", author: "Elena Rostova", role: "Fraud Analyst", timestamp: "1h ago", content: "Coordinating with banking compliance partner regarding shared Chase account." },
+    ],
+  },
+  {
+    case_id: "CASE-9010",
+    session_id: "sess_colo_9010",
+    rider_id: "CR-6650",
+    rider_name: "Kenji Sato",
+    hub: "Metro Core",
+    title: "Dual-App Colocation Probe along Highway 99",
+    severity: "HIGH",
+    status: "ESCALATED",
+    assigned_to: "marcus_vance",
+    threat_summary: "Dual-App Colocation Probe: Two riders moving synchronously within 2 meters for 45 minutes.",
+    risk_score: 86,
+    created_at: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
+    payout_held: 710.0,
+    payout_frozen: true,
+    liveness_status: "PENDING",
+    signals: [
+      { name: "Trajectory Overlap 98.4%", score: 94, weight: 0.60, severity: "HIGH", description: "Identical speed, heading, and stop duration with CR-4402." },
+      { name: "Ghost Rider Indicator", score: 81, weight: 0.40, severity: "MEDIUM", description: "One physical vehicle carrying two dispatch phones." },
+    ],
+    linked_riders: [
+      { rider_id: "CR-4402", name: "Aria Thorne", relationship: "Co-located delivery partner", risk: 68 },
+    ],
+    linked_devices: [
+      { device_id: "DEV-PIXEL-8", model: "Google Pixel 8", imei: "354182049102941", os: "Android 14", root: false },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "4h ago", event: "Colocation engine flagged tandem trajectory", type: "alert" },
+      { id: "tl-2", timestamp: "3h ago", event: "Case escalated to Senior Analyst Queue", type: "system" },
+    ],
+    notes: [],
   },
   {
     case_id: "CASE-9006",
     session_id: "sess_legit_9006",
     rider_id: "CR-7812",
     rider_name: "Elena Rostova",
+    hub: "East Sector",
+    title: "Routine route drift cleared by 3D liveness attestation",
     severity: "LOW",
-    status: "RESOLVED_LEGIT",
+    status: "CLOSED",
+    outcome: "false_positive",
     assigned_to: "marcus_vance",
-    threat_summary: "Routine route drift cleared by 3D liveness biometric attestation.",
+    threat_summary: "Routine route drift cleared by 3D liveness biometric attestation. Genuine traffic detour.",
     risk_score: 11,
-    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
+    payout_held: 0.0,
+    payout_frozen: false,
+    liveness_status: "PASSED",
+    signals: [
+      { name: "3D Liveness Attestation", score: 3, weight: 0.70, severity: "LOW", description: "Passed biometric face challenge with 99.8% confidence." },
+      { name: "Secure Enclave Hardware", score: 5, weight: 0.30, severity: "LOW", description: "Apple Secure Enclave hardware key validated." },
+    ],
+    linked_riders: [],
+    linked_devices: [
+      { device_id: "DEV-IPHONE-15", model: "Apple iPhone 15 Pro", imei: "354910284910291", os: "iOS 18.2", root: false },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "6h ago", event: "Route drift flagged during road construction detour", type: "alert" },
+      { id: "tl-2", timestamp: "5h ago", event: "Biometric challenge completed successfully by courier", type: "challenge" },
+      { id: "tl-3", timestamp: "4h ago", event: "Case closed as False Positive (Legitimate Courier)", type: "action", actor: "Marcus Vance" },
+    ],
+    notes: [
+      { id: "n-1", author: "Marcus Vance", role: "Lead Analyst", timestamp: "4h ago", content: "Detour was due to Alaskan Way Viaduct construction. Liveness check passed effortlessly. Hold released." },
+    ],
+  },
+  {
+    case_id: "CASE-9002",
+    session_id: "sess_root_9002",
+    rider_id: "CR-1904",
+    rider_name: "Vikram Patel",
+    hub: "South Bay",
+    title: "Magisk Root Device Farm & GPS Joystick Emulation",
+    severity: "CRITICAL",
+    status: "CLOSED",
+    outcome: "fraud_confirmed",
+    assigned_to: "elena_rostova",
+    threat_summary: "Confirmed GPS joystick emulation and fake order farming. Permanent account restriction.",
+    risk_score: 98,
+    created_at: new Date(Date.now() - 1000 * 60 * 720).toISOString(),
+    payout_held: 2150.0,
+    payout_frozen: true,
+    liveness_status: "FAILED",
+    signals: [
+      { name: "Root Exploit Intercept", score: 99, weight: 0.50, severity: "HIGH", description: "Kernel-level Magisk bypass detected." },
+      { name: "Synthetic Order Generation", score: 98, weight: 0.50, severity: "HIGH", description: "12 consecutive deliveries accepted with zero physical transit." },
+    ],
+    linked_riders: [],
+    linked_devices: [
+      { device_id: "DEV-ROOT-XIAOMI", model: "Xiaomi Poco F4", imei: "869102938192019", os: "Android 13", root: true },
+    ],
+    timeline: [
+      { id: "tl-1", timestamp: "12h ago", event: "System identified synthetic order acceptance pattern", type: "alert" },
+      { id: "tl-2", timestamp: "10h ago", event: "Fraud confirmed: Account permanently suspended and payout forfeited", type: "action", actor: "Elena Rostova" },
+    ],
+    notes: [
+      { id: "n-1", author: "Elena Rostova", role: "Fraud Analyst", timestamp: "10h ago", content: "Vendor confirmed merchant orders were generated by automated script. Permanent ban enforced." },
+    ],
   },
 ];
 
@@ -417,6 +707,208 @@ export async function takeCaseAction(
       success: true,
       message: `Case ${caseId} updated successfully (offline mode).`,
     };
+  }
+}
+
+export async function addCaseNote(
+  caseId: string,
+  noteContent: string,
+  author: string = "Analyst",
+  role: string = "Fraud Analyst"
+): Promise<CaseItem> {
+  const newNote: CaseNote = {
+    id: `note-${Date.now()}`,
+    author,
+    role,
+    timestamp: "Just now",
+    content: noteContent,
+  };
+  const newTimelineItem: CaseTimelineItem = {
+    id: `tl-${Date.now()}`,
+    timestamp: "Just now",
+    event: `Note added by ${author}: "${noteContent.slice(0, 40)}..."`,
+    type: "action",
+    actor: author,
+  };
+
+  if (USE_MOCK) {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            notes: [...(c.notes || []), newNote],
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+  try {
+    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ content: noteContent, author, role }),
+    });
+  } catch {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            notes: [...(c.notes || []), newNote],
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+}
+
+export async function freezeCasePayout(
+  caseId: string,
+  freeze: boolean
+): Promise<CaseItem> {
+  const newTimelineItem: CaseTimelineItem = {
+    id: `tl-${Date.now()}`,
+    timestamp: "Just now",
+    event: freeze ? "Payout frozen into risk hold escrow" : "Payout hold released to courier wallet",
+    type: "action",
+  };
+
+  if (USE_MOCK) {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            payout_frozen: freeze,
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+  try {
+    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/freeze`, {
+      method: "POST",
+      body: JSON.stringify({ frozen: freeze }),
+    });
+  } catch {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            payout_frozen: freeze,
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+}
+
+export async function requestCaseLiveness(caseId: string): Promise<CaseItem> {
+  const newTimelineItem: CaseTimelineItem = {
+    id: `tl-${Date.now()}`,
+    timestamp: "Just now",
+    event: "Live 3D Biometric Liveness challenge dispatched to rider app",
+    type: "challenge",
+  };
+
+  if (USE_MOCK) {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            liveness_status: "PENDING",
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+  try {
+    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/liveness`, {
+      method: "POST",
+    });
+  } catch {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            liveness_status: "PENDING",
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+}
+
+export async function closeCaseWithOutcome(
+  caseId: string,
+  outcome: "fraud_confirmed" | "false_positive",
+  note: string,
+  author: string = "Analyst"
+): Promise<CaseItem> {
+  const status: CaseStatus = outcome === "fraud_confirmed" ? "RESTRICTED" : "RESOLVED_LEGIT";
+  const newTimelineItem: CaseTimelineItem = {
+    id: `tl-${Date.now()}`,
+    timestamp: "Just now",
+    event:
+      outcome === "fraud_confirmed"
+        ? `Case closed: Fraud Confirmed by ${author}. Courier restricted.`
+        : `Case closed: False Positive by ${author}. Payout cleared.`,
+    type: "action",
+    actor: author,
+  };
+  const newNote: CaseNote = {
+    id: `note-${Date.now()}`,
+    author,
+    role: "Adjudicator",
+    timestamp: "Just now",
+    content: `Outcome: ${outcome === "fraud_confirmed" ? "Fraud Confirmed" : "False Positive"}. ${note}`,
+  };
+
+  if (USE_MOCK) {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            status: "CLOSED",
+            outcome,
+            payout_frozen: outcome === "fraud_confirmed",
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            notes: [...(c.notes || []), newNote],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
+  }
+  try {
+    return await apiClient<CaseItem>(`/api/v1/cases/${caseId}/close`, {
+      method: "POST",
+      body: JSON.stringify({ outcome, note, status }),
+    });
+  } catch {
+    mockCases = mockCases.map((c) =>
+      c.case_id === caseId
+        ? {
+            ...c,
+            status: "CLOSED",
+            outcome,
+            payout_frozen: outcome === "fraud_confirmed",
+            timeline: [newTimelineItem, ...(c.timeline || [])],
+            notes: [...(c.notes || []), newNote],
+            updated_at: new Date().toISOString(),
+          }
+        : c
+    );
+    return mockCases.find((c) => c.case_id === caseId)!;
   }
 }
 
