@@ -85,15 +85,31 @@ export interface AppealItem {
   created_at: string;
 }
 
+export type PayoutStatus = "PENDING" | "HELD" | "APPROVED" | "REJECTED" | "BLOCKED";
+
+export interface PayoutChecklist {
+  facial_liveness_verified: boolean;
+  analyst_approved: boolean;
+}
+
 export interface PayoutItem {
   payout_id: string;
   rider_id: string;
-  driver_id?: string;
+  rider_name?: string;
+  rider_hub?: string;
   amount: number;
-  status: "PENDING" | "APPROVED" | "BLOCKED" | "HELD";
+  status: PayoutStatus;
   hold_reason?: string;
   destination_account?: string;
-  created_at?: string;
+  bank_name?: string;
+  risk_score?: number;
+  created_at: string;
+  escrow_window_deadline?: string; // 24h protection window
+  checklist?: PayoutChecklist;
+  liveness_score?: number;
+  liveness_verified_at?: string;
+  reviewed_by?: string;
+  notes?: string;
 }
 
 export interface GraphCluster {
@@ -241,31 +257,207 @@ let mockAppeals: AppealItem[] = [
 ];
 
 let mockPayouts: PayoutItem[] = [
+  // --- Escrow Holds (24-hour protection window) ---
   {
     payout_id: "PAY-89410",
     rider_id: "CR-8941",
+    rider_name: "Alex Rivera",
+    rider_hub: "Downtown",
     amount: 1240.0,
     status: "HELD",
     hold_reason: "IBAN Conflict: 3 separate couriers linked to identical bank routing within 48h.",
     destination_account: "Chase •••• 9921",
-    created_at: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
+    bank_name: "JPMorgan Chase NA",
+    risk_score: 89,
+    created_at: new Date(Date.now() - 1000 * 60 * 318).toISOString(), // ~5h 18m ago
+    escrow_window_deadline: new Date(Date.now() + 1000 * 60 * 60 * 18 + 1000 * 60 * 42).toISOString(), // ~18h 42m left
+    checklist: {
+      facial_liveness_verified: false,
+      analyst_approved: false,
+    },
+    notes: "Escrow hold initiated following velocity trigger. Mandatory 3D face liveness required.",
   },
+  {
+    payout_id: "PAY-89413",
+    rider_id: "CR-9023",
+    rider_name: "Tariq Vance",
+    rider_hub: "Downtown",
+    amount: 840.5,
+    status: "HELD",
+    hold_reason: "Syndicate Farm Collision: Linked to Magisk rooted Xiaomi IMEI-e3b0.",
+    destination_account: "Chase •••• 9921",
+    bank_name: "JPMorgan Chase NA",
+    risk_score: 94,
+    created_at: new Date(Date.now() - 1000 * 60 * 705).toISOString(), // ~11h 45m ago
+    escrow_window_deadline: new Date(Date.now() + 1000 * 60 * 60 * 12 + 1000 * 60 * 15).toISOString(), // ~12h 15m left
+    checklist: {
+      facial_liveness_verified: false,
+      analyst_approved: false,
+    },
+    notes: "Device farm cluster detected. Payout frozen in regulatory compliance escrow.",
+  },
+  {
+    payout_id: "PAY-89414",
+    rider_id: "CR-6650",
+    rider_name: "Kenji Sato",
+    rider_hub: "Metro Core",
+    amount: 710.0,
+    status: "HELD",
+    hold_reason: "Dual-App Colocation Tandem Probe along Highway 99.",
+    destination_account: "Wells Fargo •••• 4108",
+    bank_name: "Wells Fargo Bank",
+    risk_score: 72,
+    created_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(), // 1.5h ago
+    escrow_window_deadline: new Date(Date.now() + 1000 * 60 * 60 * 22 + 1000 * 60 * 30).toISOString(), // ~22h 30m left
+    checklist: {
+      facial_liveness_verified: true,
+      analyst_approved: false,
+    },
+    liveness_score: 98.4,
+    liveness_verified_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    notes: "Facial liveness verified via app prompt. Awaiting analyst signoff.",
+  },
+
+  // --- Pending Approvals ---
   {
     payout_id: "PAY-89411",
     rider_id: "CR-9023",
+    rider_name: "Tariq Vance",
+    rider_hub: "Downtown",
     amount: 480.5,
     status: "PENDING",
-    hold_reason: "Spatial Drift: Impossible hop of 8.4km during active order handoff.",
+    hold_reason: "Spatial Drift: Jump of 8.4km during active order handoff window.",
     destination_account: "Wells Fargo •••• 4108",
-    created_at: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
+    bank_name: "Wells Fargo Bank",
+    risk_score: 58,
+    created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    checklist: {
+      facial_liveness_verified: false,
+      analyst_approved: false,
+    },
   },
+  {
+    payout_id: "PAY-89415",
+    rider_id: "CR-3319",
+    rider_name: "Carlos Mendez",
+    rider_hub: "North Hub",
+    amount: 390.0,
+    status: "PENDING",
+    hold_reason: "SIM IMSI carrier churn detected over weekend shift.",
+    destination_account: "Citibank •••• 3021",
+    bank_name: "Citibank NA",
+    risk_score: 44,
+    created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+    checklist: {
+      facial_liveness_verified: false,
+      analyst_approved: false,
+    },
+  },
+  {
+    payout_id: "PAY-89416",
+    rider_id: "CR-5542",
+    rider_name: "David Kim",
+    rider_hub: "South Bay",
+    amount: 625.8,
+    status: "PENDING",
+    hold_reason: "Velocity variance in multi-batch delivery route.",
+    destination_account: "Chase •••• 9921",
+    bank_name: "JPMorgan Chase NA",
+    risk_score: 62,
+    created_at: new Date(Date.now() - 1000 * 60 * 110).toISOString(),
+    checklist: {
+      facial_liveness_verified: false,
+      analyst_approved: false,
+    },
+  },
+
+  // --- Released Today ---
   {
     payout_id: "PAY-89412",
     rider_id: "CR-7812",
+    rider_name: "Elena Rostova",
+    rider_hub: "East Sector",
     amount: 865.2,
     status: "APPROVED",
     destination_account: "Bank of America •••• 1283",
-    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    bank_name: "Bank of America NA",
+    risk_score: 8,
+    created_at: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+    checklist: {
+      facial_liveness_verified: true,
+      analyst_approved: true,
+    },
+    liveness_score: 99.8,
+    reviewed_by: "Marcus Vance",
+    notes: "Liveness attested with Secure Enclave hardware passport. Disbursed via instant RTP.",
+  },
+  {
+    payout_id: "PAY-89417",
+    rider_id: "CR-4402",
+    rider_name: "Aria Thorne",
+    rider_hub: "Airport Corridor",
+    amount: 480.5,
+    status: "APPROVED",
+    destination_account: "US Bank •••• 7182",
+    bank_name: "US Bank NA",
+    risk_score: 14,
+    created_at: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
+    checklist: {
+      facial_liveness_verified: true,
+      analyst_approved: true,
+    },
+    reviewed_by: "Marcus Vance",
+    notes: "Appeal APP-398 approved. Released escrow hold.",
+  },
+  {
+    payout_id: "PAY-89418",
+    rider_id: "CR-1209",
+    rider_name: "Liam O'Connor",
+    rider_hub: "North Hub",
+    amount: 1120.0,
+    status: "APPROVED",
+    destination_account: "Chase •••• 5519",
+    bank_name: "JPMorgan Chase NA",
+    risk_score: 5,
+    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
+    checklist: {
+      facial_liveness_verified: true,
+      analyst_approved: true,
+    },
+    reviewed_by: "Elena Rostova",
+    notes: "Regular automated batch disbursement.",
+  },
+
+  // --- Rejected ---
+  {
+    payout_id: "PAY-89419",
+    rider_id: "CR-1904",
+    rider_name: "Vikram Patel",
+    rider_hub: "South Bay",
+    amount: 2150.0,
+    status: "REJECTED",
+    hold_reason: "Magisk Root synthetic farming & fake order replay.",
+    destination_account: "Wells Fargo •••• 8812",
+    bank_name: "Wells Fargo Bank",
+    risk_score: 98,
+    created_at: new Date(Date.now() - 1000 * 60 * 720).toISOString(),
+    reviewed_by: "Elena Rostova",
+    notes: "Permanent fraud forfeiture following Case CASE-9002 adjudication.",
+  },
+  {
+    payout_id: "PAY-89420",
+    rider_id: "CR-1092",
+    rider_name: "Marcus Brody",
+    rider_hub: "Downtown",
+    amount: 640.0,
+    status: "REJECTED",
+    hold_reason: "GPS joystick injection while stationary.",
+    destination_account: "Capital One •••• 1190",
+    bank_name: "Capital One NA",
+    risk_score: 96,
+    created_at: new Date(Date.now() - 1000 * 60 * 840).toISOString(),
+    reviewed_by: "Marcus Vance",
+    notes: "Account banned for confirmed location tampering.",
   },
 ];
 
@@ -539,17 +731,25 @@ export async function payoutAction(
   payoutId: string,
   action: { action: "release" | "block" | "hold"; reason?: string }
 ): Promise<PayoutItem> {
+  const newStatus: PayoutStatus =
+    action.action === "release"
+      ? "APPROVED"
+      : action.action === "block"
+      ? "REJECTED"
+      : "HELD";
+
   if (USE_MOCK) {
     mockPayouts = mockPayouts.map((p) =>
       p.payout_id === payoutId
         ? {
             ...p,
-            status:
-              action.action === "release"
-                ? "APPROVED"
-                : action.action === "block"
-                ? "BLOCKED"
-                : "HELD",
+            status: newStatus,
+            checklist: {
+              facial_liveness_verified:
+                p.checklist?.facial_liveness_verified ?? (action.action === "release"),
+              analyst_approved: action.action === "release",
+            },
+            notes: action.reason || p.notes,
           }
         : p
     );
@@ -565,16 +765,149 @@ export async function payoutAction(
       p.payout_id === payoutId
         ? {
             ...p,
-            status:
-              action.action === "release"
-                ? "APPROVED"
-                : action.action === "block"
-                ? "BLOCKED"
-                : "HELD",
+            status: newStatus,
+            checklist: {
+              facial_liveness_verified:
+                p.checklist?.facial_liveness_verified ?? (action.action === "release"),
+              analyst_approved: action.action === "release",
+            },
+            notes: action.reason || p.notes,
           }
         : p
     );
     return mockPayouts.find((p) => p.payout_id === payoutId)!;
+  }
+}
+
+export async function resolvePayoutLiveness(
+  payoutId: string,
+  livenessPassed: boolean,
+  score: number = 99.4,
+  approver: string = "Analyst"
+): Promise<PayoutItem> {
+  if (USE_MOCK) {
+    mockPayouts = mockPayouts.map((p) => {
+      if (p.payout_id !== payoutId) return p;
+      const updatedChecklist = {
+        facial_liveness_verified: livenessPassed,
+        analyst_approved: p.checklist?.analyst_approved || false,
+      };
+      return {
+        ...p,
+        checklist: updatedChecklist,
+        liveness_score: score,
+        liveness_verified_at: new Date().toISOString(),
+        notes: `3D Facial Liveness verified (${score}% confidence). Verified by ${approver}.`,
+      };
+    });
+    return mockPayouts.find((p) => p.payout_id === payoutId)!;
+  }
+  try {
+    return await apiClient<PayoutItem>(`/api/v1/payouts/${payoutId}/liveness`, {
+      method: "POST",
+      body: JSON.stringify({ livenessPassed, score, approver }),
+    });
+  } catch {
+    mockPayouts = mockPayouts.map((p) => {
+      if (p.payout_id !== payoutId) return p;
+      const updatedChecklist = {
+        facial_liveness_verified: livenessPassed,
+        analyst_approved: p.checklist?.analyst_approved || false,
+      };
+      return {
+        ...p,
+        checklist: updatedChecklist,
+        liveness_score: score,
+        liveness_verified_at: new Date().toISOString(),
+        notes: `3D Facial Liveness verified (${score}% confidence). Verified by ${approver}.`,
+      };
+    });
+    return mockPayouts.find((p) => p.payout_id === payoutId)!;
+  }
+}
+
+export async function bulkApprovePayouts(
+  payoutIds: string[],
+  approver: string = "Analyst"
+): Promise<PayoutItem[]> {
+  const idsSet = new Set(payoutIds);
+  if (USE_MOCK) {
+    mockPayouts = mockPayouts.map((p) =>
+      idsSet.has(p.payout_id)
+        ? {
+            ...p,
+            status: "APPROVED" as PayoutStatus,
+            reviewed_by: approver,
+            checklist: {
+              facial_liveness_verified: true,
+              analyst_approved: true,
+            },
+            notes: `Bulk approved by ${approver} via Payout Protection Console.`,
+          }
+        : p
+    );
+    return mockPayouts.filter((p) => idsSet.has(p.payout_id));
+  }
+  try {
+    return await apiClient<PayoutItem[]>("/api/v1/payouts/bulk-approve", {
+      method: "POST",
+      body: JSON.stringify({ payoutIds, approver }),
+    });
+  } catch {
+    mockPayouts = mockPayouts.map((p) =>
+      idsSet.has(p.payout_id)
+        ? {
+            ...p,
+            status: "APPROVED" as PayoutStatus,
+            reviewed_by: approver,
+            checklist: {
+              facial_liveness_verified: true,
+              analyst_approved: true,
+            },
+            notes: `Bulk approved by ${approver} via Payout Protection Console.`,
+          }
+        : p
+    );
+    return mockPayouts.filter((p) => idsSet.has(p.payout_id));
+  }
+}
+
+export async function bulkRejectPayouts(
+  payoutIds: string[],
+  approver: string = "Analyst",
+  reason: string = "Bulk rejected by analyst."
+): Promise<PayoutItem[]> {
+  const idsSet = new Set(payoutIds);
+  if (USE_MOCK) {
+    mockPayouts = mockPayouts.map((p) =>
+      idsSet.has(p.payout_id)
+        ? {
+            ...p,
+            status: "REJECTED" as PayoutStatus,
+            reviewed_by: approver,
+            notes: reason,
+          }
+        : p
+    );
+    return mockPayouts.filter((p) => idsSet.has(p.payout_id));
+  }
+  try {
+    return await apiClient<PayoutItem[]>("/api/v1/payouts/bulk-reject", {
+      method: "POST",
+      body: JSON.stringify({ payoutIds, approver, reason }),
+    });
+  } catch {
+    mockPayouts = mockPayouts.map((p) =>
+      idsSet.has(p.payout_id)
+        ? {
+            ...p,
+            status: "REJECTED" as PayoutStatus,
+            reviewed_by: approver,
+            notes: reason,
+          }
+        : p
+    );
+    return mockPayouts.filter((p) => idsSet.has(p.payout_id));
   }
 }
 
