@@ -242,7 +242,7 @@ export default function AppealsPage() {
         action: "approve",
         redress: redressOptions,
         note: approveNote || "Redress granted. Payout hold released and account standing restored.",
-        actor: `${role.charAt(0).toUpperCase() + role.slice(1)} Analyst`,
+        actor: role ? `${role} Adjudicator` : "Risk Analyst",
       });
 
       setAppeals((prev) => prev.map((a) => (a.id === selectedAppeal.id ? updated : a)));
@@ -275,7 +275,7 @@ export default function AppealsPage() {
         action: "reject",
         reason: combinedReason,
         note: rejectNote || "Sanction upheld after forensic evidence review.",
-        actor: `${role.charAt(0).toUpperCase() + role.slice(1)} Analyst`,
+        actor: role ? `${role} Adjudicator` : "Risk Analyst",
       });
 
       setAppeals((prev) => prev.map((a) => (a.id === selectedAppeal.id ? updated : a)));
@@ -315,7 +315,7 @@ export default function AppealsPage() {
       const updated = await requestAppealMoreInfo(selectedAppeal.id, {
         question: infoQuestion,
         deadlineHours: infoDeadlineHours,
-        actor: `${role.charAt(0).toUpperCase() + role.slice(1)} Analyst`,
+        actor: role ? `${role} Adjudicator` : "Risk Analyst",
       });
 
       setAppeals((prev) => prev.map((a) => (a.id === selectedAppeal.id ? updated : a)));
@@ -343,7 +343,7 @@ export default function AppealsPage() {
     if (!verifyCanAdjudicate() || !selectedAppeal) return;
     setActionLoading(true);
     try {
-      const updated = await startReviewAppeal(selectedAppeal.id, `${role.charAt(0).toUpperCase() + role.slice(1)} Analyst`);
+      const updated = await startReviewAppeal(selectedAppeal.id, role ? `${role} Adjudicator` : "Risk Analyst");
       setAppeals((prev) => prev.map((a) => (a.id === selectedAppeal.id ? updated : a)));
       showToast({
         type: "info",

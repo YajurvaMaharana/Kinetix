@@ -272,7 +272,7 @@ export default function PayoutsPage() {
 
     setActionLoading(true);
     try {
-      await bulkApprovePayouts(ids, role === "Admin" ? "System Admin" : "Lead Analyst");
+      await bulkApprovePayouts(ids, role === "ADMIN" ? "System Admin" : "Lead Analyst");
       setPayouts((prev) =>
         prev.map((p) =>
           ids.includes(p.payout_id)
@@ -318,7 +318,7 @@ export default function PayoutsPage() {
 
     setActionLoading(true);
     try {
-      await bulkRejectPayouts(ids, role === "Admin" ? "System Admin" : "Lead Analyst");
+      await bulkRejectPayouts(ids, role === "ADMIN" ? "System Admin" : "Lead Analyst");
       setPayouts((prev) =>
         prev.map((p) =>
           ids.includes(p.payout_id)
@@ -420,7 +420,7 @@ export default function PayoutsPage() {
         livenessModalPayout.payout_id,
         livenessResult.passed,
         livenessResult.score,
-        role === "Admin" ? "System Admin" : "Lead Analyst"
+        role === "ADMIN" ? "System Admin" : "Lead Analyst"
       );
 
       setPayouts((prev) => prev.map((p) => (p.payout_id === updated.payout_id ? updated : p)));

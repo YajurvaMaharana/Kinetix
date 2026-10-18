@@ -225,7 +225,7 @@ export default function PoliciesPage() {
       const deployed = await deployPolicy(
         editorConfig,
         deployNote.trim() || undefined,
-        user.name ? `${user.name} (Admin)` : "Admin"
+        user?.name ? `${user.name} (Admin)` : "Admin"
       );
       setCurrentActiveConfig({ ...editorConfig });
       setActiveVersionTag(deployed.version_tag);
@@ -273,7 +273,7 @@ export default function PoliciesPage() {
 
     setRollingBackId(version.id);
     try {
-      const rolled = await rollbackPolicy(version.id, user.name ? `${user.name} (Admin)` : "Admin");
+      const rolled = await rollbackPolicy(version.id, user?.name ? `${user.name} (Admin)` : "Admin");
       setCurrentActiveConfig({ ...version.config });
       setEditorConfig({ ...version.config });
       setActiveVersionTag(rolled.version_tag);

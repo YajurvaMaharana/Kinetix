@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Logo from "./Logo";
 import CommandPalette from "./CommandPalette";
-import { useAuth, RoleType } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { checkBackendHealth } from "@/api/client";
 import {
@@ -135,7 +135,7 @@ const NAV_GROUPS: NavGroupItem[] = [
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, role, setRole, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { showToast } = useToast();
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -143,7 +143,6 @@ export default function Navbar() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   // Real backend health check status
   const [apiOnline, setApiOnline] = useState(true);
@@ -187,7 +186,6 @@ export default function Navbar() {
     setMobileMenuOpen(false);
     setNotificationsOpen(false);
     setProfileMenuOpen(false);
-    setRoleMenuOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -196,36 +194,20 @@ export default function Navbar() {
         setActiveDropdown(null);
         setNotificationsOpen(false);
         setProfileMenuOpen(false);
-        setRoleMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleRoleChange = (newRole: RoleType) => {
-    setRole(newRole);
-    setRoleMenuOpen(false);
-    showToast({
-      type: "info",
-      title: `Switched Role to ${newRole}`,
-      message:
-        newRole === "Admin"
-          ? "Admin access enabled: Policies & Demo Controls active."
-          : newRole === "Analyst"
-          ? "Analyst access enabled: Case actions & Payout gating active."
-          : "Auditor mode enabled: Read-only access enforced.",
-    });
-  };
-
   const handleLogout = () => {
     logout();
     showToast({
       type: "info",
       title: "Signed Out",
-      message: "Session ended. Returned to overview.",
+      message: "Session ended. Returned to role selection.",
     });
-    navigate("/overview");
+    navigate("/choose-role");
   };
 
   // Determine active group based on current pathname
@@ -420,66 +402,34 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Role Switcher (Analyst / Admin / Auditor) */}
-            <div className="relative">
-              <button
-                onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--surface-alt)] border border-[var(--border)] text-xs font-bold text-[var(--primary)] hover:border-[var(--primary)]/40 transition-all"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-[var(--primary)]" />
-                <span>{role}</span>
-                <ChevronDown className="w-3 h-3 text-[var(--muted)]" />
-              </button>
-
-              {roleMenuOpen && (
-                <div className="absolute right-0 mt-3 w-48 bg-[var(--surface)] rounded-2xl shadow-dropdown border border-[var(--border)] p-1.5 z-50">
-                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                    Switch Active Role
-                  </div>
-                  {(["Analyst", "Admin", "Auditor"] as RoleType[]).map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => handleRoleChange(r)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-left transition-colors ${
-                        role === r
-                          ? "bg-[var(--primary)] text-white shadow-sm"
-                          : "text-[var(--ink)] hover:bg-[var(--surface-alt)]"
-                      }`}
-                    >
-                      <span>{r}</span>
-                      {role === r && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                  ))}
-                  <div className="px-3 py-1.5 border-t border-[var(--border-subtle)] mt-1 text-[10px] text-[var(--muted)]">
-                    {role === "Admin"
-                      ? "Full Policy & Demo execution"
-                      : role === "Analyst"
-                      ? "Case & Payout approval rights"
-                      : "Read-only inspection"}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Profile Menu & Logout */}
             <div className="relative">
               <button
                 onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                 className="flex items-center gap-2 p-1 rounded-full bg-[var(--surface-alt)] hover:bg-[var(--lavender)] border border-[var(--border)] transition-all"
-                title={`${user.name} (${user.role})`}
+                title={user ? `${user.name} (${user.role})` : "Account Menu"}
               >
                 <div className="w-7 h-7 rounded-full bg-[var(--primary)] text-white font-extrabold flex items-center justify-center text-[11px] shadow-sm">
-                  {user.avatar}
+                  {user?.avatar || "K"}
                 </div>
               </button>
 
               {profileMenuOpen && (
-                <div className="absolute right-0 mt-3 w-56 bg-[var(--surface)] rounded-2xl shadow-dropdown border border-[var(--border)] p-2 z-50">
+                <div className="absolute right-0 mt-3 w-60 bg-[var(--surface)] rounded-2xl shadow-dropdown border border-[var(--border)] p-2 z-50">
                   <div className="px-3 py-2 border-b border-[var(--border-subtle)] mb-1">
-                    <div className="font-extrabold text-xs text-[var(--ink)]">{user.name}</div>
-                    <div className="text-[10px] text-[var(--muted)] truncate">{user.email}</div>
-                    <div className="inline-block mt-1 px-2 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-[9px] font-bold">
-                      {user.title}
+                    <div className="font-extrabold text-xs text-[var(--ink)]">{user?.name || "Anonymous User"}</div>
+                    <div className="text-[10px] text-[var(--muted)] truncate">{user?.email || "No email"}</div>
+                    
+                    {/* Read-Only Role Badge */}
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="px-2 py-0.5 rounded-full bg-[var(--primary)]/15 text-[var(--primary)] text-[10px] font-black uppercase tracking-wider border border-[var(--primary)]/20">
+                        {user?.role || "GUEST"}
+                      </span>
+                      {user?.title && (
+                        <span className="text-[10px] font-medium text-[var(--muted)] truncate">
+                          {user.title}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <button
