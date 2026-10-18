@@ -13,10 +13,14 @@ import {
   Zap,
   Play,
   ScanFace,
+  Check,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { evaluateSession } from "@/lib/api";
 import { Assessment, SessionRequest, ThreatTag, FaceVerifyResponse } from "@/lib/types";
-import FaceLivenessModal from "@/components/FaceLivenessModal";
+import FacialLivenessModal from "@/components/FacialLivenessModal";
+import { FacialLivenessVerificationResponse } from "@/api/endpoints";
 
 interface ScenarioPreset {
   id: string;
@@ -117,6 +121,11 @@ export default function SimulatorPage() {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [isSimulatedResponse, setIsSimulatedResponse] = useState<boolean>(true);
   const [isFaceModalOpen, setIsFaceModalOpen] = useState<boolean>(false);
+  const [livenessResult, setLivenessResult] = useState<{
+    status: "VERIFIED" | "NOT_MATCHED" | "INCONCLUSIVE";
+    face_match_score: number;
+    reason?: string;
+  } | null>(null);
 
   const applyPreset = (preset: ScenarioPreset) => {
     setSelectedPresetId(preset.id);
@@ -128,6 +137,7 @@ export default function SimulatorPage() {
     setVpn(preset.vpn);
     setRooted(preset.rooted);
     setPayoutAccountChanged(preset.payoutAccountChanged || false);
+    setLivenessResult(null);
   };
 
   const runEvaluation = async () => {
@@ -289,21 +299,70 @@ export default function SimulatorPage() {
     runEvaluation();
   }, [speed, faceConfidence, typingCadence, routeDeviation, mockGps, vpn, rooted, payoutAccountChanged]);
 
-  const handleVerified = (res: FaceVerifyResponse) => {
-    if (assessment) {
-      setAssessment({
-        ...assessment,
-        verdict: (res.new_verdict === "ALLOW" || res.new_verdict === "CHALLENGE" || res.new_verdict === "INVESTIGATE" ? res.new_verdict : "ALLOW") as "ALLOW" | "CHALLENGE" | "INVESTIGATE",
-        trust_score: res.passed ? Math.min(100, assessment.trust_score + 18) : Math.max(10, assessment.trust_score - 30),
-        threat_tags: res.passed ? ["CLEAN"] : ["ACCOUNT_HANDOFF"],
-        challenge: res.passed ? null : assessment.challenge,
-        payout_decision: res.passed
-          ? {
-              status: "APPROVED",
-              hold_reason: "Liveness verification successfully passed by driver.",
-              hold_period_hours: 0,
-            }
-          : assessment.payout_decision,
+  const handleLivenessResult = (res: FacialLivenessVerificationResponse) => {
+    const scoreVal = typeof res.face_match_score === "number" ? res.face_match_score : 0.98;
+
+    // Feed returned face-match score into Configuration Envelope's face-match field
+    setFaceConfidence(scoreVal);
+
+    if (res.status === "VERIFIED") {
+      setLivenessResult({
+        status: "VERIFIED",
+        face_match_score: scoreVal,
+        reason: res.reason,
+      });
+
+      // Feed into Synthetic Assessment Result
+      setAssessment((prev) => {
+        if (!prev) return prev;
+        const newScore = Math.min(99.4, Math.max(prev.trust_score, 88.0));
+        return {
+          ...prev,
+          trust_score: newScore,
+          verdict: prev.verdict === "BLOCK" ? "INVESTIGATE" : "ALLOW",
+          threat_tags: prev.threat_tags.filter((t) => t !== "ACCOUNT_HANDOFF"),
+          challenge: null,
+          factors: prev.factors.map((f) =>
+            f.name.includes("Biometric") || f.category === "BIOMETRIC"
+              ? {
+                  ...f,
+                  score: scoreVal,
+                  impact: "POSITIVE" as const,
+                  description: `Similarity confidence: ${(scoreVal * 100).toFixed(1)}% (Liveness verified)`,
+                }
+              : f
+          ),
+          payout_decision: {
+            status: "ESCROW_HOLD",
+            hold_reason: "Liveness verified, awaiting analyst approval.",
+            hold_period_hours: 12,
+          },
+        };
+      });
+    } else {
+      // Not matched keeps it held and shows the reason
+      setLivenessResult({
+        status: "NOT_MATCHED",
+        face_match_score: scoreVal,
+        reason: res.reason || "Face biometric match score fell below verification threshold.",
+      });
+
+      // Feed into Synthetic Assessment Result
+      setAssessment((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          factors: prev.factors.map((f) =>
+            f.name.includes("Biometric") || f.category === "BIOMETRIC"
+              ? {
+                  ...f,
+                  score: scoreVal,
+                  impact: "NEGATIVE" as const,
+                  description: `Similarity confidence: ${(scoreVal * 100).toFixed(1)}% (${res.reason || "Mismatch"})`,
+                }
+              : f
+          ),
+        };
       });
     }
   };
@@ -342,31 +401,77 @@ export default function SimulatorPage() {
       </div>
 
       {isPayoutHoldActive && (
-        <div className="rounded-xl border border-amber-500/50 bg-amber-950/40 p-4 shadow-lg shadow-amber-950/30 text-amber-200 space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-amber-500/50 bg-amber-950/40 p-4 shadow-lg shadow-amber-950/30 text-amber-200 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5 text-amber-400 animate-pulse" />
+              <ShieldAlert className="h-5 w-5 text-amber-400 animate-pulse shrink-0" />
               <span className="font-bold text-sm text-white">
                 Payout Escrow Hold Active: 24-Hour Protection Window
               </span>
             </div>
-            <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/40">
-              STATUS: HELD
-            </span>
+            {livenessResult?.status === "VERIFIED" ? (
+              <span className="rounded bg-emerald-500/20 px-2.5 py-1 text-[10px] font-mono font-bold text-emerald-300 border border-emerald-500/40">
+                Liveness verified, awaiting analyst approval
+              </span>
+            ) : (
+              <span className="rounded bg-amber-500/20 px-2.5 py-1 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/40">
+                STATUS: HELD
+              </span>
+            )}
           </div>
+
           <p className="text-xs text-amber-200/90 leading-relaxed">
             ⚠️ Disbursement of $250.00 is held under the 24-hour destination account modification window. Facial liveness re-verification and analyst clearance are required before funds release.
           </p>
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-500/20">
-            <span className="text-[11px] font-mono text-amber-300/80">
-              Release Requires: <code className="text-amber-200">liveness_selfie + analyst_approval</code>
-            </span>
+
+          {/* Not matched keeps it held and shows the reason */}
+          {livenessResult?.status === "NOT_MATCHED" && (
+            <div className="p-3 rounded-lg bg-rose-950/70 border border-rose-500/50 text-xs text-rose-200 flex items-start gap-2.5 animate-in fade-in duration-200">
+              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold block text-rose-300">Biometric Verification Not Matched:</span>
+                <span className="text-[11px] text-rose-200/90 leading-relaxed">
+                  {livenessResult.reason || "Face biometric match score fell below verification threshold. Payout remains held."}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-amber-500/20">
+            <div className="flex items-center gap-2 text-[11px] font-mono">
+              <span className="text-amber-300/80">Release Checklist:</span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs ${
+                  livenessResult?.status === "VERIFIED"
+                    ? "bg-emerald-500/25 text-emerald-300 font-bold border border-emerald-500/50"
+                    : "text-amber-200/90 bg-amber-500/10 border border-amber-500/30"
+                }`}
+              >
+                {livenessResult?.status === "VERIFIED" ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>☑ liveness_selfie</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-amber-400 font-bold">☐</span>
+                    <span>liveness_selfie</span>
+                  </>
+                )}
+              </span>
+              <span className="text-slate-400">+</span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs text-amber-200/75 bg-amber-500/10 border border-amber-500/20">
+                <span className="text-amber-400">☐</span>
+                <span>analyst_approval</span>
+              </span>
+            </div>
+
             <button
               onClick={() => setIsFaceModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/20 border border-amber-500/50 px-3 py-1 text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition-colors shadow-sm cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/20 border border-amber-500/50 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition-colors shadow-sm cursor-pointer"
             >
               <ScanFace className="h-3.5 w-3.5 text-amber-400" />
-              Resolve with Facial Liveness
+              <span>Resolve with Facial Liveness</span>
             </button>
           </div>
         </div>
@@ -718,12 +823,14 @@ export default function SimulatorPage() {
         </div>
       </div>
 
-      <FaceLivenessModal
+      <FacialLivenessModal
         isOpen={isFaceModalOpen}
         onClose={() => setIsFaceModalOpen(false)}
         challengeId={assessment?.challenge?.challenge_id || "chlg_demo_face_01"}
         riderId={assessment?.rider_id || "rider_interactive_sim"}
-        onVerified={handleVerified}
+        payoutAmount={250.0}
+        onResult={handleLivenessResult}
+        onSuccess={handleLivenessResult}
       />
     </div>
   );

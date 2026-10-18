@@ -4,5 +4,8 @@
   "request_header_options": {
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API": true
   },
-  "permissions": []
+  "permissions": [],
+  "requestFramePermissions": [
+    "camera"
+  ]
 }
