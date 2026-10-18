@@ -711,3 +711,85 @@ async def test_policy_feedback_summary_math(client: AsyncClient, db_session):
     assert spoof_item["total_reviews"] == 9
     assert pytest.approx(spoof_item["observed_precision"], abs=1e-2) == 0.889
     assert "High precision" in spoof_item["suggested_nudge"]
+
+
+@pytest.mark.anyio
+async def test_case_decision_post_endpoints(client: AsyncClient, db_session):
+    """
+    Validates POST /api/v1/cases/{case_id}/decision and POST /api/v1/cases/{case_id}/action:
+    - Default X-Role header
+    - Action mapping: confirm_fraud -> RESOLVED_FRAUD, false_positive -> RESOLVED_FALSE_POSITIVE
+    - Empty note handling
+    - Return format: {"status": "success", "case_id": ..., "new_status": ...}
+    """
+    now = utcnow()
+    rider = Rider(
+        id="rider_dec_test",
+        display_name="Test Decision Rider",
+        phone_number="+15559998888",
+        status="active",
+        created_at=now,
+    )
+    db_session.add(rider)
+
+    case1 = Case(
+        id="case_dec_1",
+        session_id="sess_dec_1",
+        rider_id="rider_dec_test",
+        severity="HIGH",
+        status="OPEN",
+        threat_tag="ACCOUNT_HANDOFF",
+        risk_score=78.5,
+        created_at=now,
+        updated_at=now,
+    )
+    case2 = Case(
+        id="case_dec_2",
+        session_id="sess_dec_2",
+        rider_id="rider_dec_test",
+        severity="MEDIUM",
+        status="OPEN",
+        threat_tag="GPS_SPOOFING",
+        risk_score=60.0,
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add(case1)
+    db_session.add(case2)
+    db_session.commit()
+
+    # 1. Test confirm_fraud on /decision without explicit X-Role header
+    res1 = await client.post(
+        "/api/v1/cases/case_dec_1/decision",
+        json={"action": "confirm_fraud", "note": "Verified account hijacking"},
+    )
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["status"] == "success"
+    assert data1["case_id"] == "case_dec_1"
+    assert data1["new_status"] == "RESOLVED_FRAUD"
+
+    # Verify DB state
+    db_session.expire_all()
+    c1 = db_session.query(Case).filter(Case.id == "case_dec_1").first()
+    assert c1.status == "RESOLVED_FRAUD"
+
+    # 2. Test False Positive on /decision with empty note and role header
+    res2 = await client.post(
+        "/api/v1/cases/case_dec_2/decision",
+        headers={"X-Role": "analyst"},
+        json={"action": "False Positive", "note": ""},
+    )
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["status"] == "success"
+    assert data2["case_id"] == "case_dec_2"
+    assert data2["new_status"] == "RESOLVED_FALSE_POSITIVE"
+
+    # 3. Test /action alias endpoint
+    res3 = await client.post(
+        "/api/v1/cases/case_dec_2/action",
+        json={"action": "reverify"},
+    )
+    assert res3.status_code == 200
+    assert res3.json()["new_status"] == "IN_REVIEW"

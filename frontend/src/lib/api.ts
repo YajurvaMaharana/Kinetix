@@ -152,20 +152,61 @@ export async function getCaseDetail(caseId: string, role?: Role): Promise<CaseDe
   return apiFetch<CaseDetailResponse>(`/cases/${encodeURIComponent(caseId)}`, { role });
 }
 
+export interface CaseDecisionResult {
+  status: string;
+  case_id: string;
+  new_status: string;
+  action?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
 /**
- * Submits an analyst review action with mandatory notes.
- * Actions: false_positive | confirm_fraud | request_reverify | restrict | escalate | clear
+ * Submits an analyst review action / decision.
+ * POST /api/v1/cases/{case_id}/decision
  */
 export async function actOnCase(
   caseId: string,
-  payload: { action: string; note: string },
+  payload: { action: string; note?: string },
   role?: Role
-): Promise<CaseDetailResponse> {
-  return apiFetch<CaseDetailResponse>(`/cases/${encodeURIComponent(caseId)}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-    role,
-  });
+): Promise<CaseDecisionResult> {
+  const url = `${API_BASE}/cases/${encodeURIComponent(caseId)}/decision`;
+  const activeRole = role || getActiveRole() || "analyst";
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Role": activeRole,
+      },
+      body: JSON.stringify({
+        action: payload.action,
+        note: payload.note || "",
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(
+        `Case decision request failed: url=${url}, status=${res.status} ${res.statusText}, body=${errText}`
+      );
+      let parsedDetail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        parsedDetail = parsed.detail || parsed.message || errText;
+      } catch {
+        // preserve raw error text
+      }
+      throw new Error(`API Error [${res.status}] ${res.statusText}: ${parsedDetail}`);
+    }
+
+    const data = await res.json();
+    return data as CaseDecisionResult;
+  } catch (err) {
+    console.error("actOnCase error:", err);
+    throw err;
+  }
 }
 
 /**

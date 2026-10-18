@@ -363,6 +363,13 @@ class CaseActionRequest(BaseModel):
     assigned_to: Optional[str] = None
 
 
+class CaseDecisionRequest(BaseModel):
+    action: str
+    note: Optional[str] = ""
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class CaseResponse(BaseModel):
     id: str
     case_id: str

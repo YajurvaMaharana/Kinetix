@@ -482,55 +482,54 @@ function CasesContent() {
   // Execute Case Review Action
   const handleAction = async (action: string) => {
     if (!selectedCaseId) return;
-    if (!reviewNote.trim()) {
-      setActionError("A detailed reviewer note is mandatory before submitting any decision.");
-      return;
-    }
 
     setActionInProgress(action);
     setActionError(null);
     setActionSuccess(null);
 
+    const noteToSend = reviewNote.trim() || "";
+
     try {
-      const updatedDetail = await actOnCase(
+      const result = await actOnCase(
         selectedCaseId,
-        { action, note: reviewNote.trim() },
+        { action, note: noteToSend },
         activeRole
       );
       setActionSuccess(`Action '${action.replace("_", " ").toUpperCase()}' executed successfully.`);
 
-      if (updatedDetail && updatedDetail.case) {
-        setCaseDetail(updatedDetail);
-      } else {
-        setCaseDetail((prev) => {
-          if (!prev) return null;
-          let newStatus = prev.case.status;
-          let newSeverity = prev.case.severity;
-          if (action === "false_positive") newStatus = "RESOLVED_FALSE_POSITIVE";
-          else if (action === "confirm_fraud") newStatus = "CONFIRMED_FRAUD";
-          else if (action === "escalate") newSeverity = "CRITICAL";
-          else if (action === "clear") newStatus = "RESOLVED";
+      const newStatus = result?.new_status || (
+        action === "false_positive" ? "RESOLVED_FALSE_POSITIVE" :
+        action === "confirm_fraud" ? "RESOLVED_FRAUD" :
+        action === "escalate" ? "ESCALATED" :
+        action === "clear" ? "RESOLVED" :
+        action === "restrict" ? "RESTRICTED" : "IN_REVIEW"
+      );
 
-          return {
-            ...prev,
-            case: { ...prev.case, status: newStatus, severity: newSeverity },
-            audit_trail: [
-              {
-                log_id: `log_${Date.now()}`,
-                action: `CASE_ACTION_${action.toUpperCase()}`,
-                actor_id: `reviewer:${activeRole}`,
-                details: reviewNote.trim(),
-                timestamp: new Date().toISOString(),
-              },
-              ...prev.audit_trail,
-            ],
-          };
-        });
-      }
+      setCaseDetail((prev) => {
+        if (!prev) return null;
+        let newSeverity = prev.case.severity;
+        if (action === "escalate") newSeverity = "CRITICAL";
 
-      fetchCasesList();
+        return {
+          ...prev,
+          case: { ...prev.case, status: newStatus, severity: newSeverity },
+          audit_trail: [
+            {
+              log_id: `log_${Date.now()}`,
+              action: `CASE_ACTION_${action.toUpperCase()}`,
+              actor_id: `reviewer:${activeRole}`,
+              details: noteToSend || `Decision applied: ${action}`,
+              timestamp: new Date().toISOString(),
+            },
+            ...prev.audit_trail,
+          ],
+        };
+      });
+
+      await fetchCasesList();
       setReviewNote("");
     } catch (err: unknown) {
+      console.error(`Case action '${action}' failed:`, err);
       const msg = err instanceof Error ? err.message : String(err);
       setActionError(msg);
     } finally {
@@ -769,6 +768,7 @@ function CasesContent() {
               <option value="RESOLVED">Resolved</option>
               <option value="RESOLVED_FALSE_POSITIVE">Resolved (False Positive)</option>
               <option value="CONFIRMED_FRAUD">Confirmed Fraud</option>
+              <option value="RESOLVED_FRAUD">Resolved (Fraud)</option>
             </select>
           </div>
 
@@ -1027,10 +1027,16 @@ function CasesContent() {
                               ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
                               : c.status === "IN_REVIEW"
                               ? "bg-amber-500/10 text-amber-300 border border-amber-500/20"
-                              : c.status === "CONFIRMED_FRAUD"
+                              : c.status === "CONFIRMED_FRAUD" || c.status === "RESOLVED_FRAUD"
                               ? "bg-red-500/10 text-red-300 border border-red-500/20"
                               : c.status === "RESOLVED_FALSE_POSITIVE"
                               ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                              : c.status === "RESOLVED"
+                              ? "bg-teal-500/10 text-teal-300 border border-teal-500/20"
+                              : c.status === "RESTRICTED"
+                              ? "bg-purple-500/10 text-purple-300 border border-purple-500/20"
+                              : c.status === "ESCALATED"
+                              ? "bg-rose-500/10 text-rose-300 border border-rose-500/20"
                               : "bg-slate-800 text-slate-400"
                           }`}
                         >
@@ -1422,7 +1428,7 @@ function CasesContent() {
                 {/* 1. False Positive */}
                 <button
                   onClick={() => handleAction("false_positive")}
-                  disabled={!reviewNote.trim() || !!actionInProgress}
+                  disabled={!!actionInProgress}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors shadow-sm"
                   title="Marks case false positive, lifts restrictions, releases eligible holds, records feedback"
                 >
@@ -1433,7 +1439,7 @@ function CasesContent() {
                 {/* 2. Confirm Fraud */}
                 <button
                   onClick={() => handleAction("confirm_fraud")}
-                  disabled={!reviewNote.trim() || !!actionInProgress}
+                  disabled={!!actionInProgress}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors shadow-sm"
                   title="Restricts rider, blocks payouts, logs fraud strike"
                 >
@@ -1444,7 +1450,7 @@ function CasesContent() {
                 {/* 3. Request Re-Verify */}
                 <button
                   onClick={() => handleAction("request_reverify")}
-                  disabled={!reviewNote.trim() || !!actionInProgress}
+                  disabled={!!actionInProgress}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors shadow-sm"
                   title="Issues a facial liveness verification challenge"
                 >
@@ -1455,7 +1461,7 @@ function CasesContent() {
                 {/* 4. Restrict */}
                 <button
                   onClick={() => handleAction("restrict")}
-                  disabled={!reviewNote.trim() || !!actionInProgress}
+                  disabled={!!actionInProgress}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors shadow-sm"
                   title="Sets rider status to restricted"
                 >
@@ -1466,7 +1472,7 @@ function CasesContent() {
                 {/* 5. Escalate */}
                 <button
                   onClick={() => handleAction("escalate")}
-                  disabled={!reviewNote.trim() || !!actionInProgress}
+                  disabled={!!actionInProgress}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors shadow-sm"
                   title="Escalates case severity to CRITICAL for tier-2 investigator"
                 >
@@ -1477,7 +1483,7 @@ function CasesContent() {
                 {/* 6. Clear */}
                 <button
                   onClick={() => handleAction("clear")}
-                  disabled={!reviewNote.trim() || !!actionInProgress}
+                  disabled={!!actionInProgress}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-semibold text-white transition-colors shadow-sm"
                   title="Resolves case and lifts restrictions"
                 >

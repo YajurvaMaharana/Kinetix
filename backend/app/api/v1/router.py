@@ -22,6 +22,8 @@ from app.models.entities import (
     PolicyConfig,
     ReviewerAction,
     Rider,
+    RiderTrustHistory,
+    RiderTrustScore,
     RiskAssessment,
     SessionEvent,
     utcnow,
@@ -37,6 +39,7 @@ from app.schemas.contracts import (
     AssessmentSchema,
     AuditLogResponse,
     CaseActionRequest,
+    CaseDecisionRequest,
     CaseResponse,
     ChallengeFallbackRequest,
     ChallengeFallbackResponse,
@@ -1254,6 +1257,223 @@ async def update_case(
         created_at=c.created_at.isoformat(),
         updated_at=c.updated_at.isoformat(),
     )
+
+
+@api_router.post("/cases/{case_id}/decision", tags=["Cases"])
+@api_router.post("/cases/{case_id}/action", tags=["Cases"])
+async def submit_case_decision(
+    case_id: str,
+    payload: CaseDecisionRequest,
+    db: Session = Depends(get_db),
+    x_role: Optional[str] = Header(default="analyst", alias="X-Role"),
+    x_actor: Optional[str] = Header(default="analyst", alias="X-Actor"),
+):
+    """
+    Submits an analyst case review decision.
+    Accepts:
+        class CaseDecisionRequest(BaseModel):
+            action: str
+            note: Optional[str] = ""
+    Allows optional header X-Role (defaulting to "analyst").
+    Maps actions safely:
+        - "confirm_fraud" / "Confirm Fraud" -> status="RESOLVED_FRAUD"
+        - "false_positive" / "False Positive" -> status="RESOLVED_FALSE_POSITIVE"
+        - "request_reverify" / "Re-Verify Face" -> status="IN_REVIEW"
+        - "restrict" / "Restrict" -> status="RESTRICTED"
+        - "escalate" / "Escalate" -> status="ESCALATED", severity="CRITICAL"
+        - "clear" / "Clear Legitimate" -> status="RESOLVED"
+    Commits changes to DB and returns:
+        {"status": "success", "case_id": case_id, "new_status": c.status}
+    """
+    actor = x_actor or x_role or "analyst"
+    role = x_role or "analyst"
+
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found",
+        )
+
+    raw_action = (payload.action or "").strip()
+    action_norm = raw_action.lower().replace("-", "_").replace(" ", "_")
+    note = (payload.note or "").strip()
+    if not note:
+        note = f"Case decision '{raw_action}' applied by {actor}."
+
+    now = utcnow()
+    rider = db.query(Rider).filter(Rider.id == c.rider_id).first()
+
+    # Capture assessment risk & classification snapshot
+    ass_risk = c.risk_score or 50.0
+    classification = "ordinary_change"
+    threat_tag = c.threat_tag or "UNSPECIFIED"
+
+    if c.session_id:
+        ass = (
+            db.query(RiskAssessment)
+            .filter(RiskAssessment.session_id == c.session_id)
+            .order_by(RiskAssessment.created_at.desc())
+            .first()
+        )
+        if ass:
+            ass_risk = ass.risk_score
+            classification = ass.classification or classification
+            if ass.threat_tags:
+                threat_tag = str(ass.threat_tags[0]).strip("[]'\"")
+
+    threat_tag = str(threat_tag).strip("[]'\"")
+
+    # Action-to-Status Mapping & Side Effects
+    if action_norm in ["confirm_fraud", "confirm", "fraud"]:
+        new_status = "RESOLVED_FRAUD"
+        if rider:
+            rider.status = "restricted"
+            rider.updated_at = now
+
+        # Block active & held payouts
+        active_payouts = (
+            db.query(PayoutRequest)
+            .filter(
+                PayoutRequest.rider_id == c.rider_id,
+                PayoutRequest.status.in_(["HELD", "APPROVED"]),
+            )
+            .all()
+        )
+        for p in active_payouts:
+            p.status = "BLOCKED"
+            p.reason = f"Disbursement permanently blocked: Confirmed fraud in case {c.id}. Note: {note}"
+            p.analyst_id = actor
+            p.updated_at = now
+
+        # Update trust score & history
+        trust_obj = db.query(RiderTrustScore).filter(RiderTrustScore.rider_id == c.rider_id).first()
+        if trust_obj:
+            trust_obj.trust_score = 10.0
+            trust_obj.trend = "DEGRADING"
+            trust_obj.last_calculated_at = now
+        else:
+            db.add(
+                RiderTrustScore(
+                    id=f"trust_{uuid.uuid4().hex[:8]}",
+                    rider_id=c.rider_id,
+                    trust_score=10.0,
+                    trend="DEGRADING",
+                    confidence=0.95,
+                    last_calculated_at=now,
+                )
+            )
+
+        db.add(
+            RiderTrustHistory(
+                id=f"th_{uuid.uuid4().hex[:8]}",
+                rider_id=c.rider_id,
+                trust_score=10.0,
+                delta=-75.0,
+                reason=f"Confirmed fraud in case {c.id}: {note}",
+                created_at=now,
+            )
+        )
+
+    elif action_norm in ["false_positive", "falsepositive", "fp", "dismiss"]:
+        new_status = "RESOLVED_FALSE_POSITIVE"
+        if rider:
+            rider.status = "active"
+            rider.updated_at = now
+
+        # Release eligible held payouts
+        held_payouts = (
+            db.query(PayoutRequest)
+            .filter(PayoutRequest.rider_id == c.rider_id, PayoutRequest.status == "HELD")
+            .all()
+        )
+        for p in held_payouts:
+            p.status = "RELEASED"
+            p.reason = f"Disbursement released: Security case {c.id} cleared as false positive. Note: {note}"
+            p.analyst_id = actor
+            p.analyst_approved_at = now
+            p.updated_at = now
+
+    elif action_norm in ["request_reverify", "reverify", "re_verify", "re_verify_face"]:
+        new_status = "IN_REVIEW"
+        chlg = Challenge(
+            id=f"chlg_rev_{uuid.uuid4().hex[:8]}",
+            session_id=c.session_id or f"sess_{c.rider_id[:8]}",
+            rider_id=c.rider_id,
+            challenge_type="face_liveness",
+            status="PENDING",
+            level=2,
+            reason_code="ANALYST_REQUESTED",
+            created_at=now,
+            expires_at=now + timedelta(minutes=15),
+        )
+        db.add(chlg)
+
+    elif action_norm in ["restrict", "block"]:
+        new_status = "RESTRICTED"
+        if rider:
+            rider.status = "restricted"
+            rider.updated_at = now
+
+    elif action_norm in ["escalate", "escalation"]:
+        new_status = "ESCALATED"
+        c.severity = "CRITICAL"
+        if rider:
+            rider.status = "restricted"
+            rider.updated_at = now
+
+    elif action_norm in ["clear", "resolve", "resolved", "clear_legitimate"]:
+        new_status = "RESOLVED"
+        if rider:
+            rider.status = "active"
+            rider.updated_at = now
+
+    else:
+        new_status = f"RESOLVED_{action_norm.upper()}"
+
+    # Update case fields
+    c.status = new_status
+    c.notes = f"{c.notes or ''}\n[{actor} - {action_norm.upper()}]: {note}".strip()
+    c.updated_at = now
+
+    # Record ReviewerAction
+    rev_action = ReviewerAction(
+        id=f"act_{uuid.uuid4().hex[:10]}",
+        case_id=c.id,
+        reviewer_id=actor,
+        action_type=action_norm.upper(),
+        notes=note,
+        assessment_risk=ass_risk,
+        classification_snapshot=classification,
+        threat_tag=threat_tag,
+        created_at=now,
+    )
+    db.add(rev_action)
+
+    # Record AuditLog
+    audit_service.log(
+        db=db,
+        actor=actor,
+        role=role,
+        action=f"CASE_{action_norm.upper()}",
+        entity_type="case",
+        entity_id=c.id,
+        detail=f"Action: {action_norm}. Status={c.status}. Note: {note}",
+    )
+
+    db.commit()
+    db.refresh(c)
+
+    event_bus.publish(
+        f"case_action_{action_norm}",
+        {"case_id": case_id, "action": action_norm, "actor": actor, "status": c.status},
+    )
+
+    return {
+        "status": "success",
+        "case_id": case_id,
+        "new_status": c.status,
+    }
 
 
 # ==============================================================================
