@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import FaceLivenessModal from "@/components/FaceLivenessModal";
+import FacialLivenessModal from "@/components/FacialLivenessModal";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -528,12 +528,13 @@ export default function RiderHomePage() {
       {/* ========================================================= */}
       {/* FACIAL LIVENESS MODAL */}
       {/* ========================================================= */}
-      <FaceLivenessModal
+      <FacialLivenessModal
         isOpen={showLivenessModal}
         challengeId="CHAL-PAYOUT-RELEASE-9041"
-        riderId={user?.email || "marcus.chen@example.com"}
+        riderId={user?.id || "usr_rider_01"}
+        payoutAmount={heldAmount}
         onClose={() => setShowLivenessModal(false)}
-        onVerified={handleLivenessVerified}
+        onSuccess={handleLivenessVerified}
       />
     </div>
   );

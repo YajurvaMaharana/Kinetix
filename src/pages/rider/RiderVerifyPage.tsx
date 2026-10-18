@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import FaceLivenessModal from "@/components/FaceLivenessModal";
+import FacialLivenessModal from "@/components/FacialLivenessModal";
+import { FacialLivenessVerificationResponse } from "@/api/endpoints";
 import {
-  ScanFace,
   Camera,
   CheckCircle2,
   ShieldCheck,
@@ -11,6 +11,7 @@ import {
   Sparkles,
   Smartphone,
   Info,
+  TestTube,
 } from "lucide-react";
 
 export default function RiderVerifyPage() {
@@ -20,15 +21,18 @@ export default function RiderVerifyPage() {
   const [showModal, setShowModal] = useState(false);
   const [lastVerified, setLastVerified] = useState("Shift Start (8:00 AM Today)");
   const [verifiedCount, setVerifiedCount] = useState(14);
+  const [testResult, setTestResult] = useState<FacialLivenessVerificationResponse | null>(null);
 
-  const handleVerified = () => {
+  const handleVerified = (res: FacialLivenessVerificationResponse) => {
     setShowModal(false);
     setLastVerified("Just now");
     setVerifiedCount((prev) => prev + 1);
+    setTestResult(res);
+
     showToast({
       type: "success",
-      title: "Biometric Liveness Confirmed",
-      message: "3D cryptographic face vector verified. Zero telemetry penalties active.",
+      title: "Biometric Liveness & Match Verified",
+      message: `Median Euclidean distance evaluated. Decision: ${res.status}`,
     });
   };
 
@@ -45,19 +49,61 @@ export default function RiderVerifyPage() {
               Facial Liveness Verification
             </h1>
             <p className="text-xs text-[#6B6480] mt-1">
-              Verify your physical presence to clear payout holds, reset risk thresholds, and confirm shift custody
+              Verify your physical presence against your 5-pose registered face template (SSD MobileNet v1)
             </p>
           </div>
 
-          <button
-            onClick={() => setShowModal(true)}
-            className="py-3.5 px-6 rounded-full bg-[#4A2C6D] hover:bg-[#392153] text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-2 shrink-0"
-          >
-            <Camera className="w-4 h-4" />
-            <span>Start 3D Face Scan</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* Match Test Button */}
+            <button
+              onClick={() => setShowModal(true)}
+              className="py-3 px-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              title="Runs 5-frame verification match test without triggering escrow releases"
+            >
+              <TestTube className="w-4 h-4" />
+              <span>Match Test</span>
+            </button>
+
+            <button
+              onClick={() => setShowModal(true)}
+              className="py-3 px-5 rounded-full bg-[#4A2C6D] hover:bg-[#392153] text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Camera className="w-4 h-4" />
+              <span>Start 3D Face Scan</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Test Result Display if match test was executed */}
+      {testResult && (
+        <div className="bg-slate-900 text-slate-100 rounded-3xl p-6 border border-slate-700 space-y-3 font-mono text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-emerald-400">Match Test Verification Results</span>
+            <span className="text-[10px] text-slate-400">{new Date().toLocaleTimeString()}</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] pt-1 border-t border-slate-800">
+            <div>
+              <span className="text-slate-400 block text-[10px]">Decision:</span>
+              <strong className={testResult.status === "VERIFIED" || testResult.status === "MATCHED" ? "text-emerald-400" : "text-rose-400"}>
+                {testResult.status}
+              </strong>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">Median Distance:</span>
+              <strong className="text-amber-300">{testResult.similarity !== undefined ? testResult.similarity : "N/A"}</strong>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">Policy Threshold:</span>
+              <strong className="text-slate-200">0.55</strong>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px]">User ID:</span>
+              <strong className="text-slate-200">{user?.id || "usr_rider_01"}</strong>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Verification Status Overview */}
       <div className="grid sm:grid-cols-3 gap-4">
@@ -70,7 +116,7 @@ export default function RiderVerifyPage() {
             <span>Active &amp; Verified</span>
           </div>
           <p className="text-[11px] text-[#6B6480] mt-2">
-            Zero fraud flags on device biometric token
+            5-Pose templateVersion: 2 active in IndexedDB
           </p>
         </div>
 
@@ -80,7 +126,7 @@ export default function RiderVerifyPage() {
           </span>
           <div className="text-xl font-black text-[#231B33] mt-1">{lastVerified}</div>
           <p className="text-[11px] text-[#6B6480] mt-2">
-            Biometric tokens remain valid for 24 hours
+            Verification tokens valid for active shift
           </p>
         </div>
 
@@ -108,21 +154,22 @@ export default function RiderVerifyPage() {
             </span>
           </div>
           <div className="p-4 rounded-2xl bg-[#FFF9F2] border border-[#4A2C6D]/10 space-y-1">
-            <strong className="text-[#2FBF8F] block">Sub-Second Processing</strong>
+            <strong className="text-[#2FBF8F] block">SSD MobileNet v1 Neural Pipeline</strong>
             <span>
-              Liveness tests check optical micro-movements to ensure no static printed photos or video replays can spoof your account.
+              Matches 5 live un-mirrored frames against your registered 5-pose template using median Euclidean distance (<span className="font-mono">threshold 0.55</span>).
             </span>
           </div>
         </div>
       </div>
 
-      {/* Liveness Modal */}
-      <FaceLivenessModal
+      {/* Facial Liveness Modal */}
+      <FacialLivenessModal
         isOpen={showModal}
         challengeId="VERIFY-CENTER-MANUAL"
-        riderId={user?.email || "marcus.chen@example.com"}
+        riderId={user?.id || "usr_rider_01"}
         onClose={() => setShowModal(false)}
-        onVerified={handleVerified}
+        onSuccess={handleVerified}
+        onResult={setTestResult}
       />
     </div>
   );

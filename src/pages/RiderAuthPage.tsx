@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import FaceLivenessModal from "@/components/FaceLivenessModal";
 import {
   Smartphone,
   Eye,
@@ -116,8 +115,8 @@ export default function RiderAuthPage() {
     }
   };
 
-  // Register Handler - Step 1: Validate, then trigger Liveness Modal
-  const handleRegisterNext = (e: React.FormEvent) => {
+  // Register Handler - Step 1: Validate & Register account
+  const handleRegisterNext = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError(null);
 
@@ -151,44 +150,25 @@ export default function RiderAuthPage() {
       return;
     }
 
-    // Save state and open selfie verification modal
-    setPendingRegistration({
-      name: fullName.trim(),
-      phone: phone.trim(),
-      email: regEmail.trim(),
-      password: regPassword,
-      vehicleType,
-      city,
-      role: "RIDER",
-    });
-
-    setShowLivenessModal(true);
-  };
-
-  // Called when Face Liveness check passes
-  const handleLivenessVerified = async () => {
-    setShowLivenessModal(false);
-    if (!pendingRegistration) return;
-
     setRegLoading(true);
 
     try {
-      const res = await register({
-        name: pendingRegistration.name,
-        email: pendingRegistration.email,
-        password: pendingRegistration.password,
+      await register({
+        name: fullName.trim(),
+        email: regEmail.trim(),
+        password: regPassword,
         role: "RIDER",
-        vehicleType: pendingRegistration.vehicleType,
-        city: pendingRegistration.city,
+        vehicleType,
+        city,
       });
 
       showToast({
         type: "success",
-        title: "Biometric Verification & Registration Complete!",
-        message: `Welcome to Kinetics, ${pendingRegistration.name}! Your rider account is active.`,
+        title: "Account Created!",
+        message: `Step 1 complete! Proceeding to biometric face enrollment.`,
       });
 
-      navigate("/rider/home");
+      navigate("/onboarding/face");
     } catch (err: any) {
       setRegError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -513,15 +493,6 @@ export default function RiderAuthPage() {
           </form>
         )}
       </main>
-
-      {/* Mandatory Facial Liveness Modal during Registration */}
-      <FaceLivenessModal
-        isOpen={showLivenessModal}
-        challengeId="REG-RIDER-LIVENESS-INIT"
-        riderId={pendingRegistration?.email || "new-rider"}
-        onClose={() => setShowLivenessModal(false)}
-        onVerified={() => handleLivenessVerified()}
-      />
 
       {/* Footer */}
       <footer className="max-w-md mx-auto w-full text-center text-xs text-[#6B6480] pt-6 pb-2">

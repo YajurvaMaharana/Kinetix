@@ -20,6 +20,8 @@ export interface User {
   organization?: string;
   vehicleType?: string;
   city?: string;
+  faceEnrolled?: boolean;
+  profileComplete?: boolean;
 }
 
 // Backwards-compatible interface alias
@@ -50,6 +52,7 @@ interface AuthContextType {
   login: (email: string, password?: string, extraRoleOrName?: any) => Promise<User>;
   register: (payload: RegisterPayload) => Promise<{ success: boolean; status: UserStatus; message: string }>;
   logout: () => void;
+  updateOnboardingStatus: (status: { faceEnrolled?: boolean; profileComplete?: boolean }) => void;
 }
 
 const SESSION_STORAGE_KEY = "kinetics_auth_session";
@@ -329,6 +332,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateOnboardingStatus = useCallback((status: { faceEnrolled?: boolean; profileComplete?: boolean }) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...status };
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   const isAuthenticated = !!user;
   const role = user?.role || null;
   const status = user?.status || null;
@@ -354,6 +366,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        updateOnboardingStatus,
       }}
     >
       {children}

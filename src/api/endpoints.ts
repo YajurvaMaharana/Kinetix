@@ -3549,12 +3549,16 @@ export interface FacialLivenessVerificationRequest {
 }
 
 export interface FacialLivenessVerificationResponse {
-  status: "VERIFIED" | "NOT_MATCHED" | "INCONCLUSIVE";
+  status: "VERIFIED" | "MATCHED" | "NOT_MATCHED" | "INCONCLUSIVE";
   face_match_score: number;
   liveness_score: number;
   reason: string;
   payout_released: boolean;
   released_amount?: number;
+  similarity?: number;
+  attemptsRemaining?: number;
+  locked?: boolean;
+  caseId?: string;
 }
 
 export async function verifyFacialLivenessApi(

@@ -31,7 +31,7 @@ export default function ProtectedRoute({ allowedRoles, children }: ProtectedRout
     return <Navigate to="/choose-role" state={{ from: location }} replace />;
   }
 
-  // If role is not allowed, redirect to that user's own home with "Access denied" toast
+  // Role authorization check
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     const userHome = user.role === "RIDER" ? "/rider/home" : "/overview";
 
@@ -46,6 +46,26 @@ export default function ProtectedRoute({ allowedRoles, children }: ProtectedRout
     }
 
     return <Navigate to={userHome} replace />;
+  }
+
+  // Onboarding checks for Rider
+  if (user.role === "RIDER") {
+    // Check local storage flag for enrollment if user.faceEnrolled isn't explicitly false
+    const localEnrolled = localStorage.getItem(`kinetics_enrolled_face_${user.id}`) === "true";
+    const faceEnrolled = user.faceEnrolled !== false || localEnrolled;
+
+    if (!faceEnrolled && location.pathname !== "/onboarding/face") {
+      return <Navigate to="/onboarding/face" replace />;
+    }
+
+    if (faceEnrolled && user.profileComplete === false && location.pathname !== "/onboarding/profile") {
+      return <Navigate to="/onboarding/profile" replace />;
+    }
+  }
+
+  // Onboarding profile check for Analyst / Admin if profileComplete is explicitly false
+  if ((user.role === "ADMIN" || user.role === "ANALYST") && user.profileComplete === false && location.pathname !== "/onboarding/profile") {
+    return <Navigate to="/onboarding/profile" replace />;
   }
 
   return children ? <>{children}</> : <Outlet />;

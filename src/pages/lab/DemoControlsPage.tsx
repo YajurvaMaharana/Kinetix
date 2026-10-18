@@ -423,7 +423,7 @@ export default function DemoControlsPage() {
               Switch to Administrator (Elena Rostova)
             </button>
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/overview")}
               className="w-full sm:w-auto px-6 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer"
             >
               Return to Overview

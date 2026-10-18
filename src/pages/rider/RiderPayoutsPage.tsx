@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import FaceLivenessModal from "@/components/FaceLivenessModal";
+import FacialLivenessModal from "@/components/FacialLivenessModal";
 import {
   Banknote,
   Clock,
@@ -493,12 +493,13 @@ export default function RiderPayoutsPage() {
       {/* ========================================================= */}
       {/* FACIAL LIVENESS MODAL FOR PAYOUT UNLOCK */}
       {/* ========================================================= */}
-      <FaceLivenessModal
+      <FacialLivenessModal
         isOpen={showLivenessModal}
         challengeId={`PAYOUT-CHAL-${selectedPayout?.id || "9842"}`}
-        riderId={user?.email || "marcus.chen@example.com"}
+        riderId={user?.id || "usr_rider_01"}
+        payoutAmount={selectedPayout?.amount}
         onClose={() => setShowLivenessModal(false)}
-        onVerified={handleVerifyPayout}
+        onSuccess={handleVerifyPayout}
       />
     </div>
   );

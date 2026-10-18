@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { DateRangeProvider } from "@/context/DateRangeContext";
 import AppLayout from "@/components/AppLayout";
@@ -27,6 +27,10 @@ import RiderTripsPage from "@/pages/rider/RiderTripsPage";
 import RiderAppealsPage from "@/pages/rider/RiderAppealsPage";
 import RiderVerifyPage from "@/pages/rider/RiderVerifyPage";
 import RiderHelpPage from "@/pages/rider/RiderHelpPage";
+
+// Onboarding Pages
+import FaceEnrollmentPage from "@/pages/onboarding/FaceEnrollmentPage";
+import ProfileSetupPage from "@/pages/onboarding/ProfileSetupPage";
 
 // Standalone Landing & Auth Routes
 import LandingPage from "@/pages/LandingPage";
@@ -61,6 +65,24 @@ export default function App() {
               <Route path="/admin/dashboard" element={<Navigate to="/overview" replace />} />
               <Route path="/rider/dashboard" element={<Navigate to="/rider/home" replace />} />
               <Route path="/rider" element={<Navigate to="/rider/home" replace />} />
+
+              {/* Onboarding Routes */}
+              <Route
+                path="/onboarding/face"
+                element={
+                  <ProtectedRoute allowedRoles={["RIDER"]}>
+                    <FaceEnrollmentPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/onboarding/profile"
+                element={
+                  <ProtectedRoute allowedRoles={["RIDER", "ANALYST", "ADMIN"]}>
+                    <ProfileSetupPage />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* ========================================================= */}
               {/* PROTECTED DEDICATED RIDER PORTAL (RIDER ONLY) */}
