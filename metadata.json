@@ -1,0 +1,8 @@
+{
+  "name": "TrustJuggler - Continuous Behavioral Trust & Risk Engine",
+  "description": "Next-generation rideshare security, device passporting, fraud ring detection, and payout safety platform.",
+  "request_header_options": {
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API": true
+  },
+  "permissions": []
+}
