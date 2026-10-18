@@ -24,7 +24,7 @@ const ROUTE_META: Record<string, RouteMeta> = {
 export default function Breadcrumb() {
   const location = useLocation();
   const current = ROUTE_META[location.pathname] || {
-    group: "Kinetics",
+    group: "Kinetix",
     page: location.pathname.replace("/", "") || "Home",
   };
 
@@ -36,7 +36,7 @@ export default function Breadcrumb() {
           className="hover:text-[var(--primary)] flex items-center gap-1 font-semibold transition-colors"
         >
           <Home className="w-3.5 h-3.5" />
-          <span>Kinetics</span>
+          <span>Kinetix</span>
         </Link>
         <ChevronRight className="w-3.5 h-3.5 text-[var(--muted)]/60" />
         <span className="font-bold text-[var(--primary)]">{current.group}</span>

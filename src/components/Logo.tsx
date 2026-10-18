@@ -26,7 +26,7 @@ export default function Logo({ size = "md", variant = "dark" }: LogoProps) {
       </div>
       <div className="flex flex-col">
         <span className={`font-extrabold tracking-tight ${textSizes[size]} ${variant === "light" ? "text-white" : "text-[#231B33]"}`}>
-          Kinetics
+          Kinetix
         </span>
         <span className="text-[10px] uppercase font-bold tracking-widest text-[#4A2C6D]/80 -mt-1">
           TrustJuggler AI

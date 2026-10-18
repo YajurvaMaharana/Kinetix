@@ -53,7 +53,7 @@ export default function ChooseRolePage() {
         <Logo size="md" />
         <div className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#2FBF8F]/15 text-[#2FBF8F] text-xs font-bold border border-[#2FBF8F]/25">
           <span className="w-2 h-2 rounded-full bg-[#2FBF8F] animate-pulse" />
-          <span>Kinetics Statutory Gateway</span>
+          <span>Kinetix Statutory Gateway</span>
         </div>
       </header>
 
@@ -93,7 +93,7 @@ export default function ChooseRolePage() {
         </div>
 
         <h1 className="text-3xl sm:text-5xl font-extrabold text-[#231B33] tracking-tight">
-          Select Your Kinetics Portal
+          Select Your Kinetix Portal
         </h1>
         <p className="text-sm text-[#6B6480] mt-3 max-w-xl mx-auto leading-relaxed">
           Access permissions, telemetry streams, and security controls are strictly segregated by role.
@@ -302,7 +302,7 @@ export default function ChooseRolePage() {
 
       {/* Footer */}
       <footer className="max-w-6xl mx-auto w-full text-center text-xs text-[#6B6480] pt-12 pb-4">
-        <p>Kinetics Delivery Intelligence • Statutory Governance Architecture • ISO 27001 &amp; SOC2 Type II Certified</p>
+        <p>Kinetix Delivery Intelligence • Statutory Governance Architecture • ISO 27001 &amp; SOC2 Type II Certified</p>
       </footer>
     </div>
   );

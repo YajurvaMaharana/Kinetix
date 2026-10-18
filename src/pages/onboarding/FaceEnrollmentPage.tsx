@@ -455,7 +455,7 @@ export default function FaceEnrollmentPage() {
       </main>
 
       <footer className="w-full max-w-xl text-center text-[11px] text-[var(--muted)] py-2">
-        Kinetics Biometric Vault &bull; 5-Pose SSD MobileNet Pipeline
+        Kinetix Biometric Vault &bull; 5-Pose SSD MobileNet Pipeline
       </footer>
     </div>
   );

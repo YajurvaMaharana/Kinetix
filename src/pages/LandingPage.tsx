@@ -556,7 +556,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto mt-8 pt-8 border-t border-[#4A2C6D]/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#6B6480]">
           <div className="flex items-center gap-3">
             <Logo size="sm" />
-            <span>© 2025 Kinetics (TrustJuggler Systems Inc.) All rights reserved.</span>
+            <span>© 2025 Kinetix (TrustJuggler Systems Inc.) All rights reserved.</span>
           </div>
           <div className="flex items-center gap-6">
             <a href="#privacy" className="hover:underline">Privacy Policy</a>

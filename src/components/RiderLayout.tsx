@@ -127,7 +127,7 @@ export default function RiderLayout() {
                 K
               </div>
               <span className="font-extrabold text-base tracking-tight text-[#231B33]">
-                Kinetics
+                Kinetix
               </span>
             </Link>
 

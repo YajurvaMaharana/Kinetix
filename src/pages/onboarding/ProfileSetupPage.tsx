@@ -284,7 +284,7 @@ export default function ProfileSetupPage() {
       </main>
 
       <footer className="w-full max-w-xl text-center text-[11px] text-[var(--muted)] py-2">
-        Kinetics Operations Gateway &bull; Encrypted Statutory Session
+        Kinetix Operations Gateway &bull; Encrypted Statutory Session
       </footer>
     </div>
   );

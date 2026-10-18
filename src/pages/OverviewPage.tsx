@@ -752,7 +752,7 @@ export default function OverviewPage() {
           </div>
           <div>
             <h4 className="font-extrabold text-base text-[var(--ink)]">
-              Kinetics Equilibrium Core Active
+              Kinetix Equilibrium Core Active
             </h4>
             <p className="text-xs text-[var(--muted)]">
               Continuous multi-tenant fraud guardian shielding $3.2M in daily gig worker disbursements.

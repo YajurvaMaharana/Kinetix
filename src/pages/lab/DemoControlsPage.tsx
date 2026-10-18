@@ -71,7 +71,7 @@ const INITIAL_LOG_ENTRIES: ActivityLogEntry[] = [
     statusCode: 200,
     durationMs: 34,
     traceId: "trc_boot_8921a",
-    message: "Kinetics event bus connected. Ingestion endpoint /api/v1/telemetry/stream ready.",
+    message: "Kinetix event bus connected. Ingestion endpoint /api/v1/telemetry/stream ready.",
     payload: {
       engine_version: "2.4.0",
       active_workers: 4,

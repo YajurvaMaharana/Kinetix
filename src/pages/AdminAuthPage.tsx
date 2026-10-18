@@ -379,7 +379,7 @@ export default function AdminAuthPage() {
                   type="text"
                   value={organization}
                   onChange={(e) => setOrganization(e.target.value)}
-                  placeholder="e.g. Kinetics HQ Security &amp; Compliance"
+                  placeholder="e.g. Kinetix HQ Security &amp; Compliance"
                   className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 bg-[#FFF9F2]/50 text-xs text-[#231B33] focus:outline-none focus:border-[#4A2C6D]"
                   required
                 />
