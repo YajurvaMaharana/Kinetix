@@ -523,6 +523,493 @@ export async function payoutAction(
 }
 
 // 6. Graph & Syndicates
+export interface NetworkNode {
+  id: string;
+  name: string;
+  type: "rider" | "device" | "bank" | "ring";
+  risk_score: number;
+  cluster_id?: string;
+  cluster_name?: string;
+  details: {
+    subtitle: string;
+    hub?: string;
+    first_seen: string;
+    last_seen: string;
+    status: string;
+    phone_or_account?: string;
+    model_or_routing?: string;
+  };
+  history?: { timestamp: string; event: string; severity: "LOW" | "MEDIUM" | "HIGH" }[];
+}
+
+export interface NetworkEdge {
+  source: string;
+  target: string;
+  relationship: "SHARES_DEVICE" | "SHARES_IBAN" | "COLOCATED_TRIP" | "RING_MEMBER";
+  risk_flag: boolean;
+}
+
+export interface NetworkGraphResponse {
+  nodes: NetworkNode[];
+  edges: NetworkEdge[];
+  total_available: number;
+}
+
+export const INITIAL_NETWORK_GRAPH: NetworkGraphResponse = {
+  total_available: 48,
+  nodes: [
+    // Ring Center Nodes
+    {
+      id: "ring_c902",
+      name: "Ring #C-902 (Downtown)",
+      type: "ring",
+      risk_score: 94,
+      cluster_id: "RING-C-902",
+      cluster_name: "Downtown Courier Colocation Farm",
+      details: {
+        subtitle: "4 Couriers • Shared IMEI & SIM Routing",
+        hub: "Downtown",
+        first_seen: "2026-10-15 08:30",
+        last_seen: "2 mins ago",
+        status: "ACTIVE_ESCALATION",
+      },
+      history: [
+        { timestamp: "14:22 UTC", event: "Simultaneous 4-order batching at 4th Ave dropoff", severity: "HIGH" },
+        { timestamp: "12:15 UTC", event: "Identical device token recycled across 3 logins", severity: "HIGH" },
+      ],
+    },
+    {
+      id: "ring_b410",
+      name: "Ring #B-410 (Airport)",
+      type: "ring",
+      risk_score: 88,
+      cluster_id: "RING-B-410",
+      cluster_name: "Airport Corridor Teleportation Ring",
+      details: {
+        subtitle: "7 Couriers • Mock GPS Velocity Spikes",
+        hub: "North Hub",
+        first_seen: "2026-10-16 11:00",
+        last_seen: "12 mins ago",
+        status: "MONITORING",
+      },
+      history: [
+        { timestamp: "19:40 UTC", event: "GPS Velocity hop > 184 km/h", severity: "HIGH" },
+      ],
+    },
+
+    // Courier / Rider Nodes
+    {
+      id: "rider_8941",
+      name: "Alex Rivera",
+      type: "rider",
+      risk_score: 89,
+      cluster_id: "RING-C-902",
+      details: {
+        subtitle: "Courier CR-8941",
+        hub: "Downtown",
+        first_seen: "2026-09-12",
+        last_seen: "Just now",
+        status: "CHALLENGED",
+        phone_or_account: "+1 (555) 234-8901",
+      },
+      history: [
+        { timestamp: "19:40 UTC", event: "Mock GPS Jump detected", severity: "HIGH" },
+        { timestamp: "18:02 UTC", event: "Liveness prompt timed out", severity: "MEDIUM" },
+      ],
+    },
+    {
+      id: "rider_9023",
+      name: "Tariq Vance",
+      type: "rider",
+      risk_score: 64,
+      cluster_id: "RING-C-902",
+      details: {
+        subtitle: "Courier CR-9023",
+        hub: "Downtown",
+        first_seen: "2026-08-04",
+        last_seen: "8m ago",
+        status: "CHALLENGED",
+        phone_or_account: "+1 (555) 782-9914",
+      },
+      history: [
+        { timestamp: "14:22 UTC", event: "Colocated order with CR-8941", severity: "MEDIUM" },
+      ],
+    },
+    {
+      id: "rider_6650",
+      name: "Kenji Sato",
+      type: "rider",
+      risk_score: 72,
+      cluster_id: "RING-C-902",
+      details: {
+        subtitle: "Courier CR-6650",
+        hub: "Metro Core",
+        first_seen: "2026-07-19",
+        last_seen: "22m ago",
+        status: "SUSPENDED",
+        phone_or_account: "+1 (555) 901-2248",
+      },
+      history: [
+        { timestamp: "11:30 UTC", event: "Dual-app active transit flag", severity: "MEDIUM" },
+      ],
+    },
+    {
+      id: "rider_5542",
+      name: "David Kim",
+      type: "rider",
+      risk_score: 94,
+      cluster_id: "RING-B-410",
+      details: {
+        subtitle: "Courier CR-5542",
+        hub: "South Bay",
+        first_seen: "2026-10-01",
+        last_seen: "32m ago",
+        status: "ESCALATED",
+        phone_or_account: "+1 (555) 441-9082",
+      },
+      history: [
+        { timestamp: "10:15 UTC", event: "Teleportation hop 18.2km", severity: "HIGH" },
+      ],
+    },
+    {
+      id: "rider_7812",
+      name: "Elena Rostova",
+      type: "rider",
+      risk_score: 11,
+      details: {
+        subtitle: "Courier CR-7812",
+        hub: "East Sector",
+        first_seen: "2026-04-10",
+        last_seen: "14m ago",
+        status: "ACTIVE_VERIFIED",
+        phone_or_account: "+1 (555) 302-8874",
+      },
+      history: [
+        { timestamp: "09:00 UTC", event: "3D Face verification passed", severity: "LOW" },
+      ],
+    },
+    {
+      id: "rider_3319",
+      name: "Marcus Chen",
+      type: "rider",
+      risk_score: 14,
+      details: {
+        subtitle: "Courier CR-3319",
+        hub: "Metro Core",
+        first_seen: "2026-05-22",
+        last_seen: "5m ago",
+        status: "ACTIVE_VERIFIED",
+        phone_or_account: "+1 (555) 609-3112",
+      },
+      history: [
+        { timestamp: "08:15 UTC", event: "Shift check-in nominal", severity: "LOW" },
+      ],
+    },
+
+    // Device Nodes
+    {
+      id: "dev_redmi_9921",
+      name: "Redmi 12 (Rooted)",
+      type: "device",
+      risk_score: 92,
+      cluster_id: "RING-C-902",
+      details: {
+        subtitle: "IMEI: 86492005...9921",
+        model_or_routing: "Android 13.0 • Magisk SU",
+        first_seen: "2026-10-10",
+        last_seen: "2m ago",
+        status: "SPOOF_CONFIRMED",
+      },
+    },
+    {
+      id: "dev_pixel_8819",
+      name: "Pixel 8 Pro",
+      type: "device",
+      risk_score: 45,
+      cluster_id: "RING-C-902",
+      details: {
+        subtitle: "IMEI: 35918209...8819",
+        model_or_routing: "Android 14.1 • Google Fi",
+        first_seen: "2026-09-01",
+        last_seen: "18m ago",
+        status: "CHALLENGED",
+      },
+    },
+    {
+      id: "dev_iphone_15",
+      name: "iPhone 15 Pro",
+      type: "device",
+      risk_score: 8,
+      details: {
+        subtitle: "UDID: 00008110...15PRO",
+        model_or_routing: "iOS 18.2 • Secure Enclave",
+        first_seen: "2026-04-10",
+        last_seen: "Just now",
+        status: "GENUINE_PASSPORT",
+      },
+    },
+
+    // Bank Account Nodes
+    {
+      id: "bank_chase_9921",
+      name: "Chase Checking •••• 9921",
+      type: "bank",
+      risk_score: 95,
+      cluster_id: "RING-C-902",
+      details: {
+        subtitle: "Routing: 021000021",
+        model_or_routing: "JPMorgan Chase • NYC",
+        first_seen: "2026-10-12",
+        last_seen: "45m ago",
+        status: "PAYOUT_ESCROW_LOCKED",
+      },
+      history: [
+        { timestamp: "Yesterday", event: "3 separate courier registrations to same IBAN", severity: "HIGH" },
+      ],
+    },
+    {
+      id: "bank_wells_4108",
+      name: "Wells Fargo •••• 4108",
+      type: "bank",
+      risk_score: 55,
+      cluster_id: "RING-B-410",
+      details: {
+        subtitle: "Routing: 121000248",
+        model_or_routing: "Wells Fargo Bank",
+        first_seen: "2026-09-20",
+        last_seen: "2h ago",
+        status: "UNDER_REVIEW",
+      },
+    },
+    {
+      id: "bank_bofa_1283",
+      name: "Bank of America •••• 1283",
+      type: "bank",
+      risk_score: 6,
+      details: {
+        subtitle: "Routing: 111000025",
+        model_or_routing: "Bank of America",
+        first_seen: "2026-04-10",
+        last_seen: "1d ago",
+        status: "VERIFIED_CLEAR",
+      },
+    },
+    {
+      id: "ring_a108",
+      name: "Ring #A-108 (Ghost Orders)",
+      type: "ring",
+      risk_score: 99,
+      cluster_id: "RING-A-108",
+      cluster_name: "Ghost Customer Pairing Syndicate",
+      details: {
+        subtitle: "6 Couriers • Promo Injection Script",
+        hub: "Metro Core",
+        first_seen: "2026-10-14 06:10",
+        last_seen: "1 min ago",
+        status: "ACTIVE_ESCALATION",
+      },
+      history: [
+        { timestamp: "15:02 UTC", event: "Synchronized fraudulent bonus harvest (12 coupons)", severity: "HIGH" },
+      ],
+    },
+    {
+      id: "rider_4490",
+      name: "Arjun Nair",
+      type: "rider",
+      risk_score: 91,
+      cluster_id: "RING-A-108",
+      details: {
+        subtitle: "Courier CR-4490",
+        hub: "Metro Core",
+        first_seen: "2026-10-04",
+        last_seen: "4m ago",
+        status: "ESCALATED",
+        phone_or_account: "+1 (555) 771-3920",
+      },
+      history: [
+        { timestamp: "15:00 UTC", event: "Zero-transit order marked delivered", severity: "HIGH" },
+      ],
+    },
+    {
+      id: "rider_1120",
+      name: "Samantha Reed",
+      type: "rider",
+      risk_score: 87,
+      cluster_id: "RING-A-108",
+      details: {
+        subtitle: "Courier CR-1120",
+        hub: "Metro Core",
+        first_seen: "2026-10-08",
+        last_seen: "9m ago",
+        status: "ESCALATED",
+        phone_or_account: "+1 (555) 883-1492",
+      },
+      history: [
+        { timestamp: "14:48 UTC", event: "Simultaneous geo-tag match with CR-4490", severity: "HIGH" },
+      ],
+    },
+    {
+      id: "dev_moto_g_4411",
+      name: "Moto G Power (Rooted)",
+      type: "device",
+      risk_score: 88,
+      cluster_id: "RING-A-108",
+      details: {
+        subtitle: "IMEI: 35290119...4411",
+        model_or_routing: "Android 13 • KernelSU Hook",
+        first_seen: "2026-10-07",
+        last_seen: "3m ago",
+        status: "SPOOF_CONFIRMED",
+      },
+    },
+    {
+      id: "bank_citibank_8820",
+      name: "Citibank Pre-Paid •••• 8820",
+      type: "bank",
+      risk_score: 96,
+      cluster_id: "RING-A-108",
+      details: {
+        subtitle: "Routing: 031100209",
+        model_or_routing: "Citibank N.A. • Prepaid Bin",
+        first_seen: "2026-10-09",
+        last_seen: "12m ago",
+        status: "PAYOUT_ESCROW_LOCKED",
+      },
+    },
+    {
+      id: "rider_7731",
+      name: "Vikram Rao",
+      type: "rider",
+      risk_score: 42,
+      cluster_id: "RING-B-410",
+      details: {
+        subtitle: "Courier CR-7731",
+        hub: "North Hub",
+        first_seen: "2026-09-15",
+        last_seen: "25m ago",
+        status: "CHALLENGED",
+        phone_or_account: "+1 (555) 629-8804",
+      },
+    },
+  ],
+  edges: [
+    // Ring Connections
+    { source: "ring_c902", target: "rider_8941", relationship: "RING_MEMBER", risk_flag: true },
+    { source: "ring_c902", target: "rider_9023", relationship: "RING_MEMBER", risk_flag: true },
+    { source: "ring_c902", target: "rider_6650", relationship: "RING_MEMBER", risk_flag: true },
+    { source: "ring_b410", target: "rider_5542", relationship: "RING_MEMBER", risk_flag: true },
+    { source: "ring_b410", target: "rider_7731", relationship: "RING_MEMBER", risk_flag: true },
+    { source: "ring_a108", target: "rider_4490", relationship: "RING_MEMBER", risk_flag: true },
+    { source: "ring_a108", target: "rider_1120", relationship: "RING_MEMBER", risk_flag: true },
+
+    // Device Links
+    { source: "rider_8941", target: "dev_redmi_9921", relationship: "SHARES_DEVICE", risk_flag: true },
+    { source: "rider_9023", target: "dev_redmi_9921", relationship: "SHARES_DEVICE", risk_flag: true },
+    { source: "rider_6650", target: "dev_pixel_8819", relationship: "SHARES_DEVICE", risk_flag: false },
+    { source: "rider_7812", target: "dev_iphone_15", relationship: "SHARES_DEVICE", risk_flag: false },
+    { source: "rider_4490", target: "dev_moto_g_4411", relationship: "SHARES_DEVICE", risk_flag: true },
+    { source: "rider_1120", target: "dev_moto_g_4411", relationship: "SHARES_DEVICE", risk_flag: true },
+
+    // Bank Account Links
+    { source: "rider_8941", target: "bank_chase_9921", relationship: "SHARES_IBAN", risk_flag: true },
+    { source: "rider_9023", target: "bank_chase_9921", relationship: "SHARES_IBAN", risk_flag: true },
+    { source: "rider_6650", target: "bank_chase_9921", relationship: "SHARES_IBAN", risk_flag: true },
+    { source: "rider_5542", target: "bank_wells_4108", relationship: "SHARES_IBAN", risk_flag: true },
+    { source: "rider_7731", target: "bank_wells_4108", relationship: "SHARES_IBAN", risk_flag: true },
+    { source: "rider_7812", target: "bank_bofa_1283", relationship: "SHARES_IBAN", risk_flag: false },
+    { source: "rider_3319", target: "bank_bofa_1283", relationship: "SHARES_IBAN", risk_flag: false },
+    { source: "rider_4490", target: "bank_citibank_8820", relationship: "SHARES_IBAN", risk_flag: true },
+    { source: "rider_1120", target: "bank_citibank_8820", relationship: "SHARES_IBAN", risk_flag: true },
+
+    // Colocated Trips
+    { source: "rider_8941", target: "rider_9023", relationship: "COLOCATED_TRIP", risk_flag: true },
+    { source: "rider_4490", target: "rider_1120", relationship: "COLOCATED_TRIP", risk_flag: true },
+  ],
+};
+
+export async function getNetworkGraphData(
+  limit: number = 30,
+  clusterId?: string
+): Promise<NetworkGraphResponse> {
+  if (USE_MOCK) {
+    let nodes = [...INITIAL_NETWORK_GRAPH.nodes];
+    if (clusterId && clusterId !== "ALL") {
+      nodes = nodes.filter((n) => n.cluster_id === clusterId || n.id === clusterId.toLowerCase().replace("-", "_"));
+    }
+    const nodeIds = new Set(nodes.slice(0, limit).map((n) => n.id));
+    const edges = INITIAL_NETWORK_GRAPH.edges.filter(
+      (e) => {
+        const s = typeof e.source === "object" ? (e.source as any).id : e.source;
+        const t = typeof e.target === "object" ? (e.target as any).id : e.target;
+        return nodeIds.has(s) && nodeIds.has(t);
+      }
+    );
+    return {
+      nodes: nodes.slice(0, limit),
+      edges,
+      total_available: INITIAL_NETWORK_GRAPH.nodes.length,
+    };
+  }
+  try {
+    return await apiClient<NetworkGraphResponse>(`/api/v1/graph/network?limit=${limit}`);
+  } catch {
+    let nodes = [...INITIAL_NETWORK_GRAPH.nodes];
+    if (clusterId && clusterId !== "ALL") {
+      nodes = nodes.filter((n) => n.cluster_id === clusterId || n.id === clusterId.toLowerCase().replace("-", "_"));
+    }
+    const nodeIds = new Set(nodes.slice(0, limit).map((n) => n.id));
+    const edges = INITIAL_NETWORK_GRAPH.edges.filter(
+      (e) => {
+        const s = typeof e.source === "object" ? (e.source as any).id : e.source;
+        const t = typeof e.target === "object" ? (e.target as any).id : e.target;
+        return nodeIds.has(s) && nodeIds.has(t);
+      }
+    );
+    return {
+      nodes: nodes.slice(0, limit),
+      edges,
+      total_available: INITIAL_NETWORK_GRAPH.nodes.length,
+    };
+  }
+}
+
+export async function createInvestigationFromRing(
+  ringOrNodeId: string,
+  name: string,
+  riskScore: number,
+  details?: string
+): Promise<{ case_id: string; message: string }> {
+  try {
+    return await apiClient<{ case_id: string; message: string }>("/api/v1/cases", {
+      method: "POST",
+      body: JSON.stringify({
+        session_id: `ring_${ringOrNodeId}`,
+        rider_id: ringOrNodeId,
+        severity: riskScore > 80 ? "CRITICAL" : "HIGH",
+        threat_summary: `Collusion Investigation: ${name}. ${details || "Multi-entity syndicate detected via graph community analysis."}`,
+      }),
+    });
+  } catch {
+    const caseId = `CASE-RING-${Math.floor(9200 + Math.random() * 700)}`;
+    mockCases.unshift({
+      case_id: caseId,
+      session_id: `ring_${ringOrNodeId}`,
+      rider_id: ringOrNodeId,
+      rider_name: name,
+      severity: riskScore > 80 ? "CRITICAL" : "HIGH",
+      status: "OPEN",
+      assigned_to: "Lead Investigator",
+      threat_summary: `Collusion Investigation: ${name}. ${details || "Multi-entity syndicate detected via graph community analysis."}`,
+      risk_score: riskScore,
+      created_at: new Date().toISOString(),
+    });
+    return {
+      case_id: caseId,
+      message: `Formal case ${caseId} opened for ${name}. Dispatched to priority queue.`,
+    };
+  }
+}
+
 export async function getGraphClusters(): Promise<GraphCluster[]> {
   const defaultClusters: GraphCluster[] = [
     {
